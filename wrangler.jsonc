@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "epic-analyst",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Dominio publico del proyecto. Al hacer `wrangler deploy`, Cloudflare crea
+  // el registro DNS y el certificado TLS automaticamente (epic.gt ya es una
+  // zona en esta cuenta de Cloudflare, asi que no requiere pasos manuales).
+  "routes": [
+    {
+      "pattern": "analyst-bi.epic.gt",
+      "custom_domain": true
+    }
+  ],
+
+  // Sirve el frontend (frontend/) como assets estaticos desde el mismo Worker.
+  // Cualquier request que no matchee una ruta de la API cae en index.html.
+  "assets": {
+    "directory": "./frontend",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  // Dataset de Workers Analytics Engine para metricas de uso/costo.
+  // No requiere crear nada de antemano: se crea solo al primer writeDataPoint.
+  "analytics_engine_datasets": [
+    {
+      "binding": "METRICS",
+      "dataset": "epic_analyst_usage"
+    }
+  ],
+
+  // Variables NO secretas (visibles en el dashboard). Los secretos reales
+  // (ANTHROPIC_API_KEY, tokens OAuth de Metabase) van con `wrangler secret put`,
+  // nunca aqui. Ver README para el detalle de cada uno.
+  "vars": {
+    "CLAUDE_MODEL": "claude-sonnet-5",
+    "METABASE_MCP_URL": "https://dlpdash.epic.gt/api/metabase-mcp",
+    "PRICE_INPUT_PER_MTOK": "2",
+    "PRICE_OUTPUT_PER_MTOK": "10",
+    "PRICE_CACHE_WRITE_PER_MTOK": "2.5",
+    "PRICE_CACHE_READ_PER_MTOK": "0.20"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "epic-analyst",
+  "version": "0.1.0",
+  "description": "MVP de EPIC Analyst desplegado en Cloudflare Workers: Claude API + MCP connector + Metabase.",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260831.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.127.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0"
+  }
+}

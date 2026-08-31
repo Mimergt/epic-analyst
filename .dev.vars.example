@@ -1,0 +1,17 @@
+# .dev.vars.example
+# Copia este archivo a .dev.vars para desarrollo local con `wrangler dev`.
+# .dev.vars NUNCA se commitea (ver .gitignore). En producción estos mismos
+# nombres se configuran con `wrangler secret put NOMBRE`, no en este archivo.
+
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Access token OAuth del MCP de Metabase para el cliente "default"
+# (ver README: cómo obtener el token OAuth).
+METABASE_OAUTH_TOKEN_DEFAULT=pega_aqui_tu_access_token
+
+# Necesarios SOLO para leer /api/metrics (Analytics Engine SQL API).
+# CF_ACCOUNT_ID: lo ves en el dashboard de Cloudflare, en la barra lateral de Workers & Pages.
+# CF_ANALYTICS_API_TOKEN: crea un API Token en https://dash.cloudflare.com/profile/api-tokens
+#   con permiso "Account Analytics" > "Read".
+CF_ACCOUNT_ID=tu_account_id
+CF_ANALYTICS_API_TOKEN=tu_api_token_de_solo_lectura
