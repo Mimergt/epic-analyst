@@ -44,7 +44,7 @@ async function handleChat(request, env) {
     return json({ error: 'El campo "question" es requerido.' }, { status: 400 });
   }
 
-  const effectiveClientId = client_id || 'default';
+  const effectiveClientId = client_id || 'dlp';
   const clientConfig = getClient(effectiveClientId);
 
   if (!clientConfig) {

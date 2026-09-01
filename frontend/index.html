@@ -177,10 +177,10 @@
 <div id="chat"></div>
 
 <div class="suggestions" id="suggestions">
-  <button data-q="¿Cuánto vendimos ayer?">¿Cuánto vendimos ayer?</button>
-  <button data-q="¿Cuál gimnasio vendió más este mes?">¿Cuál gimnasio vendió más este mes?</button>
-  <button data-q="Muéstrame las ventas de los últimos 30 días.">Ventas últimos 30 días</button>
-  <button data-q="¿Cómo estamos comparados con el mes anterior?">Comparación vs. mes anterior</button>
+  <button data-q="¿Cuántos pedidos tuvimos ayer?">¿Cuántos pedidos tuvimos ayer?</button>
+  <button data-q="¿Cuál tienda vendió más este mes?">¿Cuál tienda vendió más este mes?</button>
+  <button data-q="¿Cuáles son los productos más vendidos este mes?">Productos más vendidos</button>
+  <button data-q="¿Cuál es el ticket promedio del mes?">Ticket promedio del mes</button>
 </div>
 
 <form id="composer">
@@ -273,7 +273,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
-          client_id: clientSelect.value || 'default',
+          client_id: clientSelect.value || 'dlp',
         }),
       });
 

@@ -188,18 +188,18 @@ response.headers.set(
 );
 ```
 
-## Multi-cliente (Cliente A → Model A, Cliente B → Model B)
+## Multi-cliente (Cliente A → colección A, Cliente B → colección B)
 
 Edita `src/clients.js` y agrega una entrada:
 
 ```js
 export const CLIENTS = {
-  default: { ... },
+  dlp: { ... },
   cliente_b: {
     display_name: 'Cliente B',
     metabase_oauth_token_secret: 'METABASE_OAUTH_TOKEN_CLIENTE_B',
-    allowed_model_name: 'Ventas Retail Cliente B',
-    allowed_model_description: 'Descripción del Model correspondiente.',
+    allowed_collection_name: 'Nombre de la coleccion en Metabase',
+    allowed_collection_description: 'Descripción de que contiene esa colección.',
     extra_instructions: '',
   },
 };

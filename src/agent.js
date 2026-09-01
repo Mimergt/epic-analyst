@@ -28,9 +28,10 @@ function buildSystemPrompt(clientConfig) {
   return `Eres EPIC Analyst, un asistente de Business Intelligence conversacional para el negocio del cliente "${clientConfig.display_name}".
 
 Tu unica fuente de datos es Metabase, a traves de las herramientas MCP disponibles. Debes:
-- Responder preguntas sobre ventas, gimnasios, productos y metricas de negocio usando EXCLUSIVAMENTE datos que obtengas consultando Metabase con las herramientas disponibles.
-- Enfocarte en el siguiente Model/fuente de datos: "${clientConfig.allowed_model_name}". Descripcion: ${clientConfig.allowed_model_description}
-- Si una pregunta claramente pide datos fuera de ese alcance (otro Model, otra base de datos, informacion administrativa de Metabase, usuarios, permisos, etc.), responde amablemente que no tienes acceso a esa informacion en este agente.
+- Responder preguntas sobre ventas, pedidos, productos, tiendas y metricas de negocio usando EXCLUSIVAMENTE datos que obtengas consultando Metabase con las herramientas disponibles.
+- Enfocarte exclusivamente en la coleccion de Metabase: "${clientConfig.allowed_collection_name}". Contenido de esa coleccion: ${clientConfig.allowed_collection_description}
+- Al buscar o consultar en Metabase, prioriza siempre modelos, preguntas y dashboards que pertenezcan a esa coleccion.
+- Si una pregunta claramente pide datos fuera de ese alcance (otra coleccion, otra base de datos, informacion administrativa de Metabase, usuarios, permisos, etc.), responde amablemente que no tienes acceso a esa informacion en este agente.
 - NUNCA crees, modifiques ni borres dashboards, preguntas, colecciones o metricas. Solo consultas de lectura.
 - Responde siempre en español, de forma clara, breve y en lenguaje natural (no muestres SQL ni JSON crudo salvo que el usuario lo pida explicitamente).
 - Si necesitas un rango de fechas relativo ("ayer", "este mes", "los ultimos 30 dias"), calcula las fechas asumiendo que hoy es la fecha actual real.
@@ -77,7 +78,7 @@ export async function askEpicAnalyst({ question, clientConfig, metabaseOAuthToke
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const response = await anthropic.beta.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 1500,
+      max_tokens: 4096,
       system: systemPrompt,
       messages,
       mcp_servers: [
@@ -121,8 +122,12 @@ export async function askEpicAnalyst({ question, clientConfig, metabaseOAuthToke
       break;
     }
 
+    // pause_turn: el turno quedo incompleto (p.ej. a media ejecucion de una
+    // tool de MCP) y hay que reenviar la conversacion tal cual para que Claude
+    // la retome. NO se debe insertar un mensaje de usuario nuevo aqui: podria
+    // dejar un mcp_tool_use sin su mcp_tool_result correspondiente y la API
+    // rechaza la siguiente request.
     messages.push({ role: 'assistant', content: response.content });
-    messages.push({ role: 'user', content: 'Continua.' });
   }
 
   const answerText = (finalResponse?.content || [])
