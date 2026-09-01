@@ -15,6 +15,15 @@ export const BLOCKED_MCP_TOOLS = [
   'create_metric',
   'update_metric',
   'create_collection',
+  // visualize_query / render_drill_through devuelven un recurso pensado para
+  // el protocolo "MCP Apps" (widgets interactivos), que solo Claude.ai/
+  // Desktop saben renderizar -- ni la API de Anthropic ni la de OpenAI lo
+  // soportan (ver AGENT_CONTEXT.md). Dejarlas habilitadas hace que modelos
+  // menos capaces (ej. gpt-4o-mini) intenten usarlas, no sepan que hacer con
+  // el resultado, y alucinen sintaxis de imagen inventada. Nuestro propio
+  // bloque ```chart reemplaza esto por completo.
+  'visualize_query',
+  'render_drill_through',
 ];
 
 // El modelo puede adjuntar un bloque ```chart al final de su respuesta con datos
@@ -54,11 +63,17 @@ Tu unica fuente de datos es Metabase, a traves de las herramientas MCP disponibl
 Sobre el ESTILO de tu respuesta en texto (la parte que el usuario lee, no el bloque chart):
 - Maximo 1-2 lineas, idealmente una sola frase. Es un titular/insight, no una explicacion. La grafica es la respuesta principal; el texto es solo el remate.
 - NUNCA narres tu proceso de busqueda ni menciones nombres/ids de preguntas o dashboards de Metabase (nada de "Encontre una pregunta llamada X, la ejecuto" ni "Voy a consultar..."). El usuario no necesita saber como llegaste al dato.
-- No repitas en texto los numeros que ya van a aparecer en la grafica (bloque chart), ni los listes de nuevo. Menciona como maximo el dato mas destacado (ej. el ganador, el total, o la comparacion clave).
+- SIEMPRE incluye el dato mas destacado como numero concreto en el texto (ej. "Calle Marti lidera con Q23,887", no "la tienda que mas vendio tuvo el mayor total"). Nunca dejes el texto vago o sin el numero real. Lo que NO debes hacer es repetir la lista completa de numeros que ya va en la grafica.
 - No agregues contexto, matices ni aclaraciones adicionales salvo que el usuario las pida explicitamente.
 - No muestres SQL ni JSON crudo salvo que el usuario lo pida explicitamente.
 
-Sobre GRAFICAS: cuando la respuesta se preste para ello, agrega al FINAL de tu respuesta (despues del texto) un bloque de codigo con lenguaje "chart" con JSON exacto en uno de estos formatos segun el caso (el bloque no lo ve el usuario, se renderiza aparte):
+Sobre GRAFICAS -- instrucciones ESTRICTAS, seguirlas al pie de la letra:
+- La UNICA forma valida de mostrar una grafica es un bloque de codigo con lenguaje "chart" con JSON, exactamente como en los ejemplos de abajo.
+- NUNCA generes markdown de imagen (nada de \`![...](...)\`), NUNCA menciones "sandbox", NUNCA inventes una URL o referencia a una imagen. Esas cosas no existen en este sistema y no se van a mostrar.
+- NUNCA uses ninguna herramienta de "visualizar" o "graficar" de Metabase (si existe alguna disponible, ignorala). La UNICA forma de graficar es el bloque \`\`\`chart descrito aqui.
+- Si no puedes armar el bloque \`\`\`chart por cualquier razon, simplemente no lo incluyas y responde solo con texto -- eso es preferible a inventar otra sintaxis.
+
+Cuando la respuesta se preste para ello, agrega al FINAL de tu respuesta (despues del texto) el bloque de codigo con lenguaje "chart" con JSON exacto en uno de estos formatos segun el caso (el bloque no lo ve el usuario, se renderiza aparte):
 
 - Comparar categorias (ventas por tienda, top productos): \`\`\`chart
 {"type":"bar","title":"Titulo corto","series":[{"name":"Nombre serie","data":[{"label":"Categoria A","value":123},{"label":"Categoria B","value":456}]}]}
@@ -79,7 +94,8 @@ Sobre GRAFICAS: cuando la respuesta se preste para ello, agrega al FINAL de tu r
 No agregues el bloque chart si de verdad no aporta nada (ej. una pregunta de si/no, o una aclaracion conversacional).
 
 Sobre USO DE HERRAMIENTAS (importante para costo y VELOCIDAD, cada llamada a Metabase es un viaje de ida y vuelta completo):
-- Usa como maximo ${MAX_MCP_TOOL_CALLS} llamadas a herramientas de Metabase por pregunta. Ve directo a la herramienta mas probable en vez de explorar de mas.
+- Usa como maximo ${MAX_MCP_TOOL_CALLS} llamadas a herramientas de Metabase por pregunta. La mayoria de preguntas se responden con 1 sola llamada -- si vas en 3 o mas, detente y responde con lo que ya tienes en vez de seguir buscando.
+- Si la lista de "preguntas ya guardadas" de abajo tiene una que coincide con lo que se pregunto, ejecutala DIRECTO por su id. NO uses busqueda/search primero para "confirmar" -- eso desperdicia una llamada. Solo busca si NINGUNA de la lista aplica.
 - Prefiere SIEMPRE una pregunta guardada (ejecutar por id) o una consulta agregada (con GROUP BY / totales) en vez de traer filas crudas sin agregar. Nunca traigas mas de ~50 filas crudas de una tabla; si necesitas un total o promedio, agregalo en la consulta, no lo calcules sumando filas individuales devueltas.
 ${knownQuestionsBlock}
 ${crossDimensionBlock}
