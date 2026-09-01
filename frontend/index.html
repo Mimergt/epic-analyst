@@ -97,6 +97,24 @@
     flex-wrap: wrap;
   }
 
+  .chart-wrap {
+    margin-top: 10px;
+    padding: 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    max-width: 520px;
+  }
+  .chart-title {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .chart-bar-label, .chart-bar-value, .chart-axis-label {
+    font-size: 10.5px;
+    fill: var(--text-dim);
+  }
+
   .typing { display: flex; gap: 4px; padding: 4px 0; }
   .typing span {
     width: 6px; height: 6px; border-radius: 50%;
@@ -247,6 +265,85 @@
     bubble.parentElement.appendChild(meta);
   }
 
+  function renderBarChart(series, width, height) {
+    const points = series[0]?.data || [];
+    if (!points.length) return '';
+
+    const padding = { top: 10, right: 10, bottom: 34, left: 10 };
+    const chartW = width - padding.left - padding.right;
+    const chartH = height - padding.top - padding.bottom;
+    const maxValue = Math.max(...points.map((p) => p.value), 1);
+    const barGap = 10;
+    const barW = (chartW - barGap * (points.length - 1)) / points.length;
+
+    let bars = '';
+    points.forEach((p, i) => {
+      const barH = (p.value / maxValue) * chartH;
+      const x = padding.left + i * (barW + barGap);
+      const y = padding.top + (chartH - barH);
+      bars += `
+        <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="4" fill="#6ea8fe" />
+        <text class="chart-bar-value" x="${x + barW / 2}" y="${y - 4}" text-anchor="middle">${p.value.toLocaleString('es-GT')}</text>
+        <text class="chart-bar-label" x="${x + barW / 2}" y="${height - 12}" text-anchor="middle">${escapeXml(truncateLabel(p.label))}</text>
+      `;
+    });
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${bars}</svg>`;
+  }
+
+  function renderLineChart(series, width, height) {
+    const points = series[0]?.data || [];
+    if (!points.length) return '';
+
+    const padding = { top: 14, right: 14, bottom: 34, left: 14 };
+    const chartW = width - padding.left - padding.right;
+    const chartH = height - padding.top - padding.bottom;
+    const maxValue = Math.max(...points.map((p) => p.value), 1);
+    const stepX = points.length > 1 ? chartW / (points.length - 1) : 0;
+
+    const coords = points.map((p, i) => {
+      const x = padding.left + i * stepX;
+      const y = padding.top + (chartH - (p.value / maxValue) * chartH);
+      return { x, y, p };
+    });
+
+    const path = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ');
+    const dots = coords
+      .map(
+        (c) => `<circle cx="${c.x}" cy="${c.y}" r="3" fill="#6ea8fe" />
+        <text class="chart-bar-label" x="${c.x}" y="${height - 12}" text-anchor="middle">${escapeXml(truncateLabel(c.p.label))}</text>`
+      )
+      .join('');
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">
+      <path d="${path}" fill="none" stroke="#6ea8fe" stroke-width="2" />
+      ${dots}
+    </svg>`;
+  }
+
+  function truncateLabel(label) {
+    const s = String(label);
+    return s.length > 12 ? s.slice(0, 11) + '…' : s;
+  }
+
+  function escapeXml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function addChart(bubble, chart) {
+    if (!chart || !chart.series || !chart.series.length) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-wrap';
+
+    const width = 480;
+    const height = 220;
+    const svg = chart.type === 'line' ? renderLineChart(chart.series, width, height) : renderBarChart(chart.series, width, height);
+
+    wrap.innerHTML = (chart.title ? `<div class="chart-title">${escapeXml(chart.title)}</div>` : '') + svg;
+    bubble.parentElement.appendChild(wrap);
+  }
+
   async function loadClients() {
     try {
       const res = await fetch(`${API_BASE}/api/clients`);
@@ -286,6 +383,7 @@
       }
 
       const bubble = addMessage('bot', data.answer);
+      addChart(bubble, data.chart);
       addMeta(bubble, data.metrics);
     } catch (err) {
       removeTyping();

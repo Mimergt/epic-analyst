@@ -3,11 +3,11 @@
 // adaptada a Cloudflare Workers (sin process.env; todo llega via `env`).
 //
 // IMPORTANTE sobre alcance de datos (ver README):
-// El control de "solo puedes ver el Model X" se hace por PROMPT (system prompt).
+// El control de "solo puedes ver la coleccion X" se hace por PROMPT (system prompt).
 // Es un guardrail de UX, NO una barrera de seguridad dura: el token OAuth usado
 // determina a que datos tiene acceso real el MCP. Antes de dar acceso a clientes
 // reales, migrar el aislamiento a permisos de Metabase (usuario de solo-lectura
-// por cliente, acotado al Model correspondiente).
+// por cliente, acotado a la coleccion correspondiente).
 
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -24,6 +24,12 @@ const BLOCKED_MCP_TOOLS = [
   'create_collection',
 ];
 
+// El modelo puede adjuntar un bloque ```chart al final de su respuesta con datos
+// listos para graficar. El frontend los renderiza el mismo (SVG propio, sin
+// depender de Metabase para el render: asi evitamos permisos de embedding por
+// pregunta, CORS, y tokens firmados).
+const CHART_BLOCK_REGEX = /```chart\s*([\s\S]*?)```/;
+
 function buildSystemPrompt(clientConfig) {
   return `Eres EPIC Analyst, un asistente de Business Intelligence conversacional para el negocio del cliente "${clientConfig.display_name}".
 
@@ -36,6 +42,11 @@ Tu unica fuente de datos es Metabase, a traves de las herramientas MCP disponibl
 - Responde siempre en español, de forma clara, breve y en lenguaje natural (no muestres SQL ni JSON crudo salvo que el usuario lo pida explicitamente).
 - Si necesitas un rango de fechas relativo ("ayer", "este mes", "los ultimos 30 dias"), calcula las fechas asumiendo que hoy es la fecha actual real.
 - Si el dato no esta disponible o la consulta falla, dilo con honestidad en vez de inventar numeros.
+- Cuando la respuesta se preste para comparar categorias (ventas por tienda, top productos, etc.) o ver una tendencia en el tiempo, ademas de tu respuesta en texto agrega al FINAL un bloque de codigo con el lenguaje "chart" y este JSON exacto (sin explicarlo, va oculto para el usuario):
+\`\`\`chart
+{"type":"bar","title":"Titulo corto","series":[{"name":"Nombre de la serie","data":[{"label":"Categoria A","value":123},{"label":"Categoria B","value":456}]}]}
+\`\`\`
+  Usa "type":"line" en vez de "bar" cuando sea una tendencia en el tiempo (usa como "label" la fecha/periodo). No agregues el bloque chart si la respuesta es un solo numero o no tiene sentido graficarla.
 ${clientConfig.extra_instructions ? `\nInstrucciones adicionales para este cliente:\n${clientConfig.extra_instructions}` : ''}`;
 }
 
@@ -130,14 +141,26 @@ export async function askEpicAnalyst({ question, clientConfig, metabaseOAuthToke
     messages.push({ role: 'assistant', content: response.content });
   }
 
-  const answerText = (finalResponse?.content || [])
+  let answerText = (finalResponse?.content || [])
     .filter((block) => block.type === 'text')
     .map((block) => block.text)
     .join('\n')
     .trim();
 
+  let chart = null;
+  const chartMatch = answerText.match(CHART_BLOCK_REGEX);
+  if (chartMatch) {
+    try {
+      chart = JSON.parse(chartMatch[1].trim());
+    } catch {
+      chart = null;
+    }
+    answerText = answerText.replace(CHART_BLOCK_REGEX, '').trim();
+  }
+
   return {
     answer: answerText || '(El agente no genero una respuesta de texto. Revisa los logs.)',
+    chart,
     usage: usageTotals,
     numModelCalls,
     numMcpToolCalls,

@@ -80,6 +80,7 @@ async function handleChat(request, env) {
 
     return json({
       answer: result.answer,
+      chart: result.chart || null,
       metrics: {
         latency_ms: latencyMs,
         input_tokens: result.usage.input_tokens,
