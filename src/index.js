@@ -11,7 +11,7 @@
 import { askEpicAnalyst } from './agent.js';
 import { getClient, listClientsSafe } from './clients.js';
 import { estimateCostUsd } from './pricing.js';
-import { logUsageEvent, querySummary } from './metrics.js';
+import { logUsageEvent, querySummary, queryDashboard } from './metrics.js';
 import { getValidAccessToken, forceRefresh } from './metabase-auth.js';
 
 // Mensaje que devuelve la API de Anthropic cuando el token OAuth de Metabase
@@ -148,6 +148,12 @@ export default {
       const clientId = url.searchParams.get('client_id') || undefined;
       const summary = await querySummary(env, { clientId });
       return json(summary);
+    }
+
+    if (url.pathname === '/api/dashboard' && request.method === 'GET') {
+      const days = Number(url.searchParams.get('days')) || 30;
+      const dashboard = await queryDashboard(env, { days });
+      return json(dashboard);
     }
 
     // Cualquier otra ruta: sirve el frontend estatico (SPA fallback a index.html).

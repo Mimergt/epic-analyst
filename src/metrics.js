@@ -44,6 +44,28 @@ export function logUsageEvent(env, event) {
   });
 }
 
+async function runAnalyticsQuery(env, sql) {
+  const res = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.CF_ANALYTICS_API_TOKEN}`,
+        'Content-Type': 'text/plain',
+      },
+      body: sql,
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Error consultando Analytics Engine: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  return data?.data || [];
+}
+
 /**
  * Lee agregados desde la SQL API de Analytics Engine (HTTP, requiere
  * CF_ACCOUNT_ID + CF_ANALYTICS_API_TOKEN como secrets).
@@ -79,23 +101,77 @@ export async function querySummary(env, { clientId } = {}) {
     ${where}
   `.trim();
 
-  const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.CF_ANALYTICS_API_TOKEN}`,
-        'Content-Type': 'text/plain',
-      },
-      body: sql,
-    }
-  );
+  try {
+    const rows = await runAnalyticsQuery(env, sql);
+    return { totals: rows[0] || null };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
 
-  if (!res.ok) {
-    const text = await res.text();
-    return { error: `Error consultando Analytics Engine: ${res.status} ${text}` };
+/**
+ * Panel de costos: totales generales + desglose por cliente + tendencia
+ * diaria de los ultimos `days` dias. Una sola llamada para no tener que
+ * pegarle 3 veces a la SQL API desde el frontend.
+ */
+export async function queryDashboard(env, { days = 30 } = {}) {
+  if (!env.CF_ACCOUNT_ID || !env.CF_ANALYTICS_API_TOKEN) {
+    return {
+      error:
+        'Falta configurar CF_ACCOUNT_ID y/o CF_ANALYTICS_API_TOKEN como secrets para poder leer metricas. Ver README.',
+    };
   }
 
-  const data = await res.json();
-  return { totals: data?.data?.[0] || null, raw: data };
+  const totalsSql = `
+    SELECT
+      SUM(_sample_interval) AS total_questions,
+      SUM(double1) AS total_input_tokens,
+      SUM(double2) AS total_output_tokens,
+      SUM(double3) AS total_cache_write_tokens,
+      SUM(double4) AS total_cache_read_tokens,
+      AVG(double7) AS avg_latency_ms,
+      SUM(double8) AS total_estimated_cost_usd,
+      SUM(double9) AS total_errors
+    FROM epic_analyst_usage
+    WHERE timestamp > NOW() - INTERVAL '${days}' DAY
+  `.trim();
+
+  const byClientSql = `
+    SELECT
+      index1 AS client_id,
+      SUM(_sample_interval) AS total_questions,
+      SUM(double8) AS total_estimated_cost_usd,
+      SUM(double9) AS total_errors
+    FROM epic_analyst_usage
+    WHERE timestamp > NOW() - INTERVAL '${days}' DAY
+    GROUP BY index1
+    ORDER BY total_estimated_cost_usd DESC
+  `.trim();
+
+  const byDaySql = `
+    SELECT
+      toStartOfDay(timestamp) AS day,
+      SUM(_sample_interval) AS total_questions,
+      SUM(double8) AS total_estimated_cost_usd
+    FROM epic_analyst_usage
+    WHERE timestamp > NOW() - INTERVAL '${days}' DAY
+    GROUP BY day
+    ORDER BY day ASC
+  `.trim();
+
+  try {
+    const [totalsRows, byClientRows, byDayRows] = await Promise.all([
+      runAnalyticsQuery(env, totalsSql),
+      runAnalyticsQuery(env, byClientSql),
+      runAnalyticsQuery(env, byDaySql),
+    ]);
+
+    return {
+      totals: totalsRows[0] || null,
+      by_client: byClientRows,
+      by_day: byDayRows,
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
 }

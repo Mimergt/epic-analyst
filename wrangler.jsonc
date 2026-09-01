@@ -47,6 +47,7 @@
   // (ANTHROPIC_API_KEY, tokens OAuth de Metabase) van con `wrangler secret put`,
   // nunca aqui. Ver README para el detalle de cada uno.
   "vars": {
+    "CF_ACCOUNT_ID": "db8d33d5dfbdf640b40aa3c13b2c2927",
     "CLAUDE_MODEL": "claude-sonnet-5",
     "METABASE_MCP_URL": "https://dlpdash.epic.gt/api/metabase-mcp",
     "PRICE_INPUT_PER_MTOK": "2",
