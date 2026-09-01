@@ -73,7 +73,11 @@ async function handleChat(request, env) {
     }
 
     const latencyMs = Date.now() - startedAt;
-    const estimatedCost = estimateCostUsd(result.usage, env);
+    // connectionUsed tiene forma "primary:anthropic:claude-sonnet-5" -- el
+    // segundo segmento es el nombre del proveedor, para calcular el costo
+    // con la tabla de precios correcta.
+    const providerUsed = result.connectionUsed?.split(':')[1] || 'anthropic';
+    const estimatedCost = estimateCostUsd(result.usage, env, providerUsed);
 
     logUsageEvent(env, {
       client_id: effectiveClientId,
@@ -87,6 +91,7 @@ async function handleChat(request, env) {
       latency_ms: latencyMs,
       estimated_cost_usd: estimatedCost,
       stop_reason: result.stopReason,
+      connection_used: result.connectionUsed,
     });
 
     return json({
@@ -101,6 +106,7 @@ async function handleChat(request, env) {
         num_model_calls: result.numModelCalls,
         num_mcp_tool_calls: result.numMcpToolCalls,
         estimated_cost_usd: estimatedCost,
+        connection_used: result.connectionUsed,
       },
     });
   } catch (err) {

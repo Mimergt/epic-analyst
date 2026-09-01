@@ -12,10 +12,14 @@
 //
 // Layout del data point (recordar el ORDEN, es posicional):
 //   indexes: [client_id]                          <- 1 sola string, usada para sampling/agrupacion
-//   blobs:   [question_preview, stop_reason, error_or_empty]
+//   blobs:   [question_preview, stop_reason, error_or_empty, connection_used]
 //   doubles: [input_tokens, output_tokens, cache_creation_input_tokens,
 //             cache_read_input_tokens, num_model_calls, num_mcp_tool_calls,
 //             latency_ms, estimated_cost_usd, is_error (0|1)]
+//
+// connection_used tiene forma "primary:anthropic:claude-sonnet-5" o
+// "backup:openai:gpt-5-mini" -- permite ver en el panel cuantas veces se
+// tuvo que caer a la conexion de backup.
 
 export function logUsageEvent(env, event) {
   if (!env.METRICS) {
@@ -29,6 +33,7 @@ export function logUsageEvent(env, event) {
       (event.question || '').slice(0, 200),
       event.stop_reason || '',
       event.error || '',
+      event.connection_used || '',
     ],
     doubles: [
       event.input_tokens || 0,

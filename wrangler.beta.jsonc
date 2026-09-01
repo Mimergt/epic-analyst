@@ -1,0 +1,59 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Worker de PRUEBAS para la version Beta (multi-proveedor + conexion de
+  // backup). Completamente separado del Worker de produccion (wrangler.jsonc,
+  // "epic-analyst", en analyst-bi.epic.gt) -- nombre distinto, sin dominio
+  // custom (usa la URL *.workers.dev que Cloudflare asigna sola), dataset de
+  // Analytics Engine separado para no mezclar metricas de prueba con las
+  // reales. Producción sigue intacta mientras se construye esto aqui.
+  //
+  // Deploy: npx wrangler deploy --config wrangler.beta.jsonc
+  // Cuando la Beta este lista y probada, se promueve copiando los cambios de
+  // src/ al deploy de produccion (wrangler.jsonc).
+  "name": "epic-analyst-beta",
+  "account_id": "db8d33d5dfbdf640b40aa3c13b2c2927",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "./frontend",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "analytics_engine_datasets": [
+    {
+      "binding": "METRICS",
+      "dataset": "epic_analyst_usage_beta"
+    }
+  ],
+
+  // Comparte el mismo KV de tokens de Metabase que produccion -- el
+  // access_token/refresh_token es el mismo negocio (DLP), no tiene sentido
+  // duplicar el login de OAuth para el ambiente de pruebas.
+  "kv_namespaces": [
+    {
+      "binding": "METABASE_TOKEN_STORE",
+      "id": "928edf940b824e4c9f3f727a38de5aad"
+    },
+    {
+      "binding": "CONNECTIONS_STORE",
+      "id": "f0ddcca634fb4adabb92cead060617fe"
+    }
+  ],
+
+  "vars": {
+    "CF_ACCOUNT_ID": "db8d33d5dfbdf640b40aa3c13b2c2927",
+    "CLAUDE_MODEL": "claude-sonnet-5",
+    "METABASE_MCP_URL": "https://dlpdash.epic.gt/api/metabase-mcp",
+    "PRICE_INPUT_PER_MTOK": "2",
+    "PRICE_OUTPUT_PER_MTOK": "10",
+    "PRICE_CACHE_WRITE_PER_MTOK": "2.5",
+    "PRICE_CACHE_READ_PER_MTOK": "0.20",
+    "PRICE_OPENAI_INPUT_PER_MTOK": "0.15",
+    "PRICE_OPENAI_OUTPUT_PER_MTOK": "0.60",
+    "PRICE_OPENAI_CACHE_WRITE_PER_MTOK": "0.15",
+    "PRICE_OPENAI_CACHE_READ_PER_MTOK": "0.075"
+  }
+}
