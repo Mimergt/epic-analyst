@@ -194,7 +194,8 @@
   // Frontend y backend viven en el mismo Worker/dominio en producción,
   // así que las rutas son relativas. Si necesitas apuntar a otro backend
   // (por ejemplo en desarrollo local separado), define esta variable antes
-  // de cargar el script: <script>window.EPIC_ANALYST_API_BASE = '...'</script>
+  // de cargar este bloque, definiendo window.EPIC_ANALYST_API_BASE = '...' en un
+  // script previo (evitar escribir aqui la etiqueta script literal: rompe el parser HTML)
   const API_BASE = window.EPIC_ANALYST_API_BASE || '';
 
   const chatEl = document.getElementById('chat');
