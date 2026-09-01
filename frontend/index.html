@@ -114,6 +114,29 @@
     font-size: 10.5px;
     fill: var(--text-dim);
   }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .chart-legend-item { display: flex; align-items: center; gap: 5px; }
+  .chart-legend-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+  }
+  .chart-wrap-kpi { text-align: center; }
+  .kpi-value {
+    font-size: 34px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .kpi-delta {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
 
   .typing { display: flex; gap: 4px; padding: 4px 0; }
   .typing span {
@@ -321,6 +344,79 @@
     </svg>`;
   }
 
+  const CHART_PALETTE = ['#6ea8fe', '#f78da7', '#ffd166', '#06d6a0', '#c77dff', '#ff9770'];
+
+  function renderPieChart(series, width, height) {
+    const points = series[0]?.data || [];
+    if (!points.length) return '';
+
+    const total = points.reduce((sum, p) => sum + p.value, 0) || 1;
+    const cx = width / 2;
+    const cy = height / 2;
+    const r = Math.min(width, height) / 2 - 8;
+
+    let angle = -Math.PI / 2;
+    let slices = '';
+    let legend = '';
+    points.forEach((p, i) => {
+      const frac = p.value / total;
+      const sweep = frac * Math.PI * 2;
+      const x1 = cx + r * Math.cos(angle);
+      const y1 = cy + r * Math.sin(angle);
+      angle += sweep;
+      const x2 = cx + r * Math.cos(angle);
+      const y2 = cy + r * Math.sin(angle);
+      const largeArc = sweep > Math.PI ? 1 : 0;
+      const color = CHART_PALETTE[i % CHART_PALETTE.length];
+      slices += `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${color}" />`;
+      legend += `<div class="chart-legend-item"><span class="chart-legend-dot" style="background:${color}"></span>${escapeXml(truncateLabel(p.label))} (${Math.round(frac * 100)}%)</div>`;
+    });
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${slices}</svg><div class="chart-legend">${legend}</div>`;
+  }
+
+  function renderStackedBarChart(chart, width, height) {
+    const categories = chart.categories || [];
+    const series = chart.series || [];
+    if (!categories.length || !series.length) return '';
+
+    const padding = { top: 10, right: 10, bottom: 34, left: 10 };
+    const chartW = width - padding.left - padding.right;
+    const chartH = height - padding.top - padding.bottom;
+    const totals = categories.map((_, i) => series.reduce((sum, s) => sum + (s.data[i] || 0), 0));
+    const maxTotal = Math.max(...totals, 1);
+    const barGap = 10;
+    const barW = (chartW - barGap * (categories.length - 1)) / categories.length;
+
+    let bars = '';
+    categories.forEach((cat, i) => {
+      const x = padding.left + i * (barW + barGap);
+      let y = padding.top + chartH;
+      series.forEach((s, si) => {
+        const val = s.data[i] || 0;
+        const barH = (val / maxTotal) * chartH;
+        y -= barH;
+        bars += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${CHART_PALETTE[si % CHART_PALETTE.length]}" />`;
+      });
+      bars += `<text class="chart-bar-label" x="${x + barW / 2}" y="${height - 12}" text-anchor="middle">${escapeXml(truncateLabel(cat))}</text>`;
+    });
+
+    const legend = series
+      .map((s, si) => `<div class="chart-legend-item"><span class="chart-legend-dot" style="background:${CHART_PALETTE[si % CHART_PALETTE.length]}"></span>${escapeXml(s.name)}</div>`)
+      .join('');
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${bars}</svg><div class="chart-legend">${legend}</div>`;
+  }
+
+  function renderKpi(chart) {
+    const valueStr = typeof chart.value === 'number'
+      ? chart.value.toLocaleString('es-GT', { maximumFractionDigits: 2 })
+      : escapeXml(String(chart.value));
+    const unit = chart.unit ? `${escapeXml(chart.unit)} ` : '';
+    const delta = chart.delta ? `<div class="kpi-delta">${escapeXml(chart.delta)}</div>` : '';
+    return `<div class="kpi-value">${unit}${valueStr}</div>${delta}`;
+  }
+
   function truncateLabel(label) {
     const s = String(label);
     return s.length > 12 ? s.slice(0, 11) + '…' : s;
@@ -331,16 +427,28 @@
   }
 
   function addChart(bubble, chart) {
-    if (!chart || !chart.series || !chart.series.length) return;
-
-    const wrap = document.createElement('div');
-    wrap.className = 'chart-wrap';
+    if (!chart || !chart.type) return;
 
     const width = 480;
     const height = 220;
-    const svg = chart.type === 'line' ? renderLineChart(chart.series, width, height) : renderBarChart(chart.series, width, height);
+    let body = '';
 
-    wrap.innerHTML = (chart.title ? `<div class="chart-title">${escapeXml(chart.title)}</div>` : '') + svg;
+    if (chart.type === 'kpi') {
+      body = renderKpi(chart);
+    } else if (chart.type === 'pie' && chart.series?.length) {
+      body = renderPieChart(chart.series, width, height);
+    } else if (chart.type === 'stacked-bar') {
+      body = renderStackedBarChart(chart, width, height);
+    } else if (chart.type === 'line' && chart.series?.length) {
+      body = renderLineChart(chart.series, width, height);
+    } else if (chart.series?.length) {
+      body = renderBarChart(chart.series, width, height);
+    }
+    if (!body) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-wrap' + (chart.type === 'kpi' ? ' chart-wrap-kpi' : '');
+    wrap.innerHTML = (chart.title ? `<div class="chart-title">${escapeXml(chart.title)}</div>` : '') + body;
     bubble.parentElement.appendChild(wrap);
   }
 

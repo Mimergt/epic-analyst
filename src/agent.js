@@ -30,7 +30,19 @@ const BLOCKED_MCP_TOOLS = [
 // pregunta, CORS, y tokens firmados).
 const CHART_BLOCK_REGEX = /```chart\s*([\s\S]*?)```/;
 
+// Limite de llamadas a herramientas MCP por pregunta. Sin esto el modelo a
+// veces explora de mas (10-20 llamadas) o arma consultas crudas que traen
+// cientos de filas, disparando el costo por pregunta a $0.50-1.50. Ver
+// AGENT_CONTEXT.md para el detalle de la investigacion de costos.
+const MAX_MCP_TOOL_CALLS = 6;
+
 function buildSystemPrompt(clientConfig) {
+  const knownQuestionsBlock = clientConfig.known_questions?.length
+    ? `\nPreguntas ya guardadas en Metabase que puedes ejecutar DIRECTO con la herramienta de ejecutar pregunta por id (sin gastar una busqueda primero) cuando el intent del usuario coincida:\n${clientConfig.known_questions
+        .map((q) => `- id ${q.id}: ${q.desc}`)
+        .join('\n')}\nSi ninguna de estas coincide bien, entonces si usa busqueda/consulta propia. Si una de estas preguntas no aplica ya el filtro de estado "Completada" (ver instrucciones adicionales abajo) y la pregunta del usuario es sobre dinero, ajusta o complementa con una consulta propia que si lo aplique.`
+    : '';
+
   return `Eres EPIC Analyst, un asistente de Business Intelligence conversacional para el negocio del cliente "${clientConfig.display_name}".
 
 Tu unica fuente de datos es Metabase, a traves de las herramientas MCP disponibles. Debes:
@@ -39,14 +51,39 @@ Tu unica fuente de datos es Metabase, a traves de las herramientas MCP disponibl
 - Al buscar o consultar en Metabase, prioriza siempre modelos, preguntas y dashboards que pertenezcan a esa coleccion.
 - Si una pregunta claramente pide datos fuera de ese alcance (otra coleccion, otra base de datos, informacion administrativa de Metabase, usuarios, permisos, etc.), responde amablemente que no tienes acceso a esa informacion en este agente.
 - NUNCA crees, modifiques ni borres dashboards, preguntas, colecciones o metricas. Solo consultas de lectura.
-- Responde siempre en español, de forma clara, breve y en lenguaje natural (no muestres SQL ni JSON crudo salvo que el usuario lo pida explicitamente).
-- Si necesitas un rango de fechas relativo ("ayer", "este mes", "los ultimos 30 dias"), calcula las fechas asumiendo que hoy es la fecha actual real.
+- Responde siempre en español. Si necesitas un rango de fechas relativo ("ayer", "este mes", "los ultimos 30 dias"), calcula las fechas asumiendo que hoy es la fecha actual real.
 - Si el dato no esta disponible o la consulta falla, dilo con honestidad en vez de inventar numeros.
-- Cuando la respuesta se preste para comparar categorias (ventas por tienda, top productos, etc.) o ver una tendencia en el tiempo, ademas de tu respuesta en texto agrega al FINAL un bloque de codigo con el lenguaje "chart" y este JSON exacto (sin explicarlo, va oculto para el usuario):
-\`\`\`chart
-{"type":"bar","title":"Titulo corto","series":[{"name":"Nombre de la serie","data":[{"label":"Categoria A","value":123},{"label":"Categoria B","value":456}]}]}
+
+Sobre el ESTILO de tu respuesta en texto (la parte que el usuario lee, no el bloque chart):
+- Maximo 2-4 lineas. Ve directo al dato o insight mas relevante.
+- NUNCA narres tu proceso de busqueda ni menciones nombres/ids de preguntas o dashboards de Metabase (nada de "Encontre una pregunta llamada X, la ejecuto" ni "Voy a consultar..."). El usuario no necesita saber como llegaste al dato.
+- No repitas en texto los numeros que ya van a aparecer en la grafica (bloque chart). El texto interpreta o destaca, la grafica muestra el detalle.
+- No muestres SQL ni JSON crudo salvo que el usuario lo pida explicitamente.
+
+Sobre GRAFICAS: cuando la respuesta se preste para ello, agrega al FINAL de tu respuesta (despues del texto) un bloque de codigo con lenguaje "chart" con JSON exacto en uno de estos formatos segun el caso (el bloque no lo ve el usuario, se renderiza aparte):
+
+- Comparar categorias (ventas por tienda, top productos): \`\`\`chart
+{"type":"bar","title":"Titulo corto","series":[{"name":"Nombre serie","data":[{"label":"Categoria A","value":123},{"label":"Categoria B","value":456}]}]}
 \`\`\`
-  Usa "type":"line" en vez de "bar" cuando sea una tendencia en el tiempo (usa como "label" la fecha/periodo). No agregues el bloque chart si la respuesta es un solo numero o no tiene sentido graficarla.
+- Tendencia en el tiempo: igual que bar pero "type":"line" y "label" es la fecha/periodo.
+- Proporcion o distribucion (metodo de pago, delivery vs pickup): \`\`\`chart
+{"type":"pie","title":"Titulo corto","series":[{"name":"Nombre serie","data":[{"label":"Categoria A","value":123},{"label":"Categoria B","value":456}]}]}
+\`\`\`
+- Composicion comparada entre categorias (ej. ventas por tienda desglosadas por metodo de pago): \`\`\`chart
+{"type":"stacked-bar","title":"Titulo corto","categories":["Tienda A","Tienda B"],"series":[{"name":"Efectivo","data":[100,200]},{"name":"Tarjeta","data":[300,150]}]}
+\`\`\`
+  (cada array en "data" debe tener el mismo largo que "categories", en el mismo orden)
+- Respuesta de un solo valor (ticket promedio, total de un periodo, etc.): \`\`\`chart
+{"type":"kpi","title":"Titulo corto","value":90.01,"unit":"Q","delta":"+5% vs mes anterior"}
+\`\`\`
+  ("unit" y "delta" son opcionales, omitelos si no aplican)
+
+No agregues el bloque chart si de verdad no aporta nada (ej. una pregunta de si/no, o una aclaracion conversacional).
+
+Sobre USO DE HERRAMIENTAS (importante para costo y velocidad):
+- Usa como maximo ${MAX_MCP_TOOL_CALLS} llamadas a herramientas de Metabase por pregunta. Ve directo a la herramienta mas probable en vez de explorar de mas.
+- Prefiere SIEMPRE una pregunta guardada (ejecutar por id) o una consulta agregada (con GROUP BY / totales) en vez de traer filas crudas sin agregar. Nunca traigas mas de ~50 filas crudas de una tabla; si necesitas un total o promedio, agregalo en la consulta, no lo calcules sumando filas individuales devueltas.
+${knownQuestionsBlock}
 ${clientConfig.extra_instructions ? `\nInstrucciones adicionales para este cliente:\n${clientConfig.extra_instructions}` : ''}`;
 }
 
@@ -90,7 +127,11 @@ export async function askEpicAnalyst({ question, clientConfig, metabaseOAuthToke
     const response = await anthropic.beta.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 4096,
-      system: systemPrompt,
+      // system y el toolset de MCP son identicos entre preguntas de un mismo
+      // cliente (no dependen de la pregunta del usuario) asi que se cachean:
+      // la primera pregunta en la ventana de cache paga precio normal, las
+      // siguientes (de cualquier usuario) pagan ~10x menos por ese bloque.
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages,
       mcp_servers: [
         {
@@ -108,6 +149,7 @@ export async function askEpicAnalyst({ question, clientConfig, metabaseOAuthToke
             acc[toolName] = { enabled: false };
             return acc;
           }, {}),
+          cache_control: { type: 'ephemeral' },
         },
       ],
       betas: ['mcp-client-2025-11-20'],
@@ -130,6 +172,14 @@ export async function askEpicAnalyst({ question, clientConfig, metabaseOAuthToke
     finalResponse = response;
 
     if (response.stop_reason !== 'tool_use' && response.stop_reason !== 'pause_turn') {
+      break;
+    }
+
+    // Guardrail duro de costo: si ya se paso el presupuesto de llamadas MCP,
+    // no se manda otro turno aunque Claude quiera seguir explorando. Se usa
+    // la respuesta parcial que ya se tiene en vez de dejar que seguir
+    // buscando dispare el costo (ver AGENT_CONTEXT.md).
+    if (numMcpToolCalls >= MAX_MCP_TOOL_CALLS) {
       break;
     }
 
