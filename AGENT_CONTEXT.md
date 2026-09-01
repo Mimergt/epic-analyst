@@ -61,6 +61,44 @@ y copiar `.dev.vars` desde la copia de iCloud (no está en git, tiene secretos).
   dashboard de Cloudflare (Workers & Pages → Analytics Engine → Create Dataset)
   porque la cuenta lo pedía como paso explícito antes de aceptar el binding.
 
+## V2: optimizacion de costo (agosto 2026)
+
+Al agregar mas tipos de grafica y la regla de "solo pedidos completados" se
+detecto que el costo por pregunta se disparaba a $0.27-$1.39 (normal deberia
+ser centavos). Causa raiz: 0 tokens de cache (`cache_creation_input_tokens` y
+`cache_read_input_tokens` en 0 siempre) — cada pregunta reenviaba desde cero
+el system prompt y las ~75 definiciones de tools del MCP de Metabase, y ademas
+el modelo a veces exploraba de mas (10-20 llamadas MCP) o traia filas crudas
+sin agregar en vez de usar preguntas ya guardadas.
+
+Fix (en `src/agent.js` y `src/clients.js`):
+1. `cache_control: {type:'ephemeral'}` en el bloque `system` y en el
+   `mcp_toolset`. Redujo el costo tipico a **$0.03-0.05 por pregunta**.
+   Hallazgo raro: el caché del `system` SI se reutiliza consistentemente entre
+   requests, pero el bloque de definiciones de tools del MCP NUNCA cachea (se
+   reescribe completo cada vez, mismo conteo de tokens en cada prueba). Se
+   sospecha que el propio MCP de Metabase devuelve el listado de tools con
+   algo ligeramente distinto cada vez (aunque se vea igual), invalidando ese
+   cache especifico del lado de Anthropic. Es un limite fuera de nuestro
+   control por ahora; no vale la pena perseguirlo mas ya que el resultado
+   actual esta muy por debajo del objetivo de costo del usuario (<$0.10).
+2. `known_questions` en `clients.js`: catalogo de ~26 preguntas guardadas de
+   la coleccion DLP con su id, inyectado en el system prompt para que Claude
+   use `execute_question` directo en vez de gastar llamadas de `search`
+   explorando cada vez. Si se crean/renombran preguntas relevantes en
+   Metabase, actualizar esta lista.
+3. `MAX_MCP_TOOL_CALLS = 6` en `agent.js`: limite duro (ademas de la
+   instruccion en el prompt) — si ya se alcanzo, no se manda otro turno de
+   `pause_turn` aunque Claude quiera seguir explorando; se usa la respuesta
+   parcial que ya se tiene.
+4. Prompt: instruccion explicita de preferir preguntas guardadas/consultas
+   agregadas sobre filas crudas sin agregar (evita que sume cientos de filas
+   el mismo en vez de que Metabase agregue con GROUP BY).
+
+Si el costo por pregunta vuelve a dispararse, revisar primero si estas
+optimizaciones siguen en su lugar (sobre todo el `cache_control`) antes de
+buscar otra causa.
+
 ## Graficas: se descarto el embedding de Metabase, son SVG propio
 
 Se intento primero mostrar graficas via "static embedding" de Metabase (iframe
@@ -74,14 +112,18 @@ en ningun archivo del repo.
 
 La solucion que SI quedo en produccion: el system prompt (`src/agent.js`)
 instruye a Claude a que, cuando la respuesta se preste para una grafica,
-agregue al final de su texto un bloque \`\`\`chart con JSON
-(`{"type":"bar"|"line","title":...,"series":[{"name":...,"data":[{"label":...,"value":...}]}]}`).
-El backend lo extrae con una regex, lo saca del texto visible, y lo devuelve
-como `chart` en la respuesta de `/api/chat`. El frontend (`frontend/index.html`,
-funciones `renderBarChart`/`renderLineChart`/`addChart`) lo dibuja con SVG
-hecho a mano, sin ninguna libreria de graficas ni dependencia de Metabase para
-el render. Si se necesita otro tipo de grafica (pie, area, etc.), agregar el
-tipo tanto en el prompt como en el frontend.
+agregue al final de su texto un bloque \`\`\`chart con JSON. El backend lo
+extrae con una regex, lo saca del texto visible, y lo devuelve como `chart` en
+la respuesta de `/api/chat`. El frontend (`frontend/index.html`) lo dibuja con
+SVG hecho a mano, sin ninguna libreria de graficas ni dependencia de Metabase
+para el render.
+
+Tipos soportados (V2, agosto 2026): `bar`, `line`, `pie`, `stacked-bar`, `kpi`.
+Cada uno tiene su propia funcion `render*` en `frontend/index.html` y su propio
+formato de JSON documentado directamente en el system prompt de `agent.js`
+(buscar "Sobre GRAFICAS"). Si se agrega un tipo nuevo, hay que agregarlo en
+AMBOS lugares (el ejemplo de JSON en el prompt, y el render + dispatcher
+`addChart` en el frontend).
 
 ## Punto frágil a vigilar: el token OAuth de Metabase
 
