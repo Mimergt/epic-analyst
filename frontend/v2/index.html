@@ -203,6 +203,11 @@
     cursor: pointer;
   }
   .suggestions button:hover { color: var(--text); border-color: var(--accent); }
+
+  /* Con ?embed=1 en la URL se oculta el header, pensado para insertar esta
+     pagina dentro de un iframe (ej. embebido en un dashboard de Metabase)
+     donde el titulo ya lo da el contexto de afuera. */
+  body.embed header { display: none; }
 </style>
 </head>
 <body>
@@ -241,6 +246,10 @@
   // de cargar este bloque, definiendo window.EPIC_ANALYST_API_BASE = '...' en un
   // script previo (evitar escribir aqui la etiqueta script literal: rompe el parser HTML)
   const API_BASE = window.EPIC_ANALYST_API_BASE || '';
+
+  if (new URLSearchParams(location.search).get('embed') === '1') {
+    document.body.classList.add('embed');
+  }
 
   const chatEl = document.getElementById('chat');
   const form = document.getElementById('composer');
