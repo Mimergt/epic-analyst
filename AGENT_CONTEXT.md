@@ -287,3 +287,8 @@ resuelven qué intenciones típicas) si el volumen de uso lo justifica.
 - El usuario prefiere procesos simples y directos; si algo se puede resolver en
   2 comandos, no lo conviertas en 10. Explicar el *porqué* de cada paso ayuda
   más que agregar pasos "por si acaso".
+- `/panel/` (panel de costos, `/api/dashboard`) **no tiene autenticacion**,
+  igual que `/api/metrics`. Es publico si alguien adivina la URL. Aceptable
+  para el MVP/uso interno actual, pero antes de compartir el link ampliamente
+  o exponerlo a clientes habria que agregarle al menos una contraseña simple
+  o Cloudflare Access.
