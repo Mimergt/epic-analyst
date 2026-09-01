@@ -278,6 +278,46 @@ disparar 15-20 llamadas MCP y tardar 50s+ costando ~$0.50. No es un bug, pero
 es una oportunidad de optimización futura (cachear qué IDs de pregunta
 resuelven qué intenciones típicas) si el volumen de uso lo justifica.
 
+## Panel de administracion (`/admin/`, solo en Beta por ahora)
+
+Protegido con password simple (secret `ADMIN_PASSWORD`, header `X-Admin-Password`
+en cada request a `/api/admin/*`, sin sesiones/cookies -- el frontend lo guarda
+en `sessionStorage`). Tres piezas nuevas en el KV `CONNECTIONS_STORE`:
+- `llm_connections`: primary/backup (ya existia, ver `connections.js`)
+- `client_config:<id>`: override de `extra_instructions` y `known_questions`
+  por cliente (ver `client-config.js`) -- se mezcla encima de la base de
+  `clients.js` en `getClientConfig()`, que ahora es ASYNC (index.js usa
+  `await getClientConfig(...)` en vez del viejo `getClient()` sincrono).
+
+**Editar secrets desde el panel** (`src/cloudflare-api.js`): llama a la API
+REST de Cloudflare (`PUT /accounts/:id/workers/scripts/:name/secrets`) usando
+un token NUEVO y mas privilegiado que los anteriores -- `CF_API_TOKEN_WORKERS_EDIT`
+(permiso "Workers Scripts: Edit", no solo Analytics Read). Necesita tambien la
+var `WORKER_SCRIPT_NAME` (nombre del Worker actual: "epic-analyst" en produccion,
+"epic-analyst-beta" en beta) para saber a cual script escribirle. Los secrets
+puestos asi quedan disponibles de inmediato (no hace falta redeploy).
+
+**Bug real encontrado y arreglado de paso**: el nombre del dataset de Analytics
+Engine estaba HARDCODEADO como `epic_analyst_usage` en todas las queries SQL de
+`metrics.js` -- rompia silenciosamente el panel de costos en beta (dataset real
+`epic_analyst_usage_beta`). Ahora viene de la var `METRICS_DATASET_NAME`.
+
+**Libreria usada**: SortableJS via CDN (`cdn.jsdelivr.net/npm/sortablejs`) para
+el drag-and-drop (reordenar conexiones primary/backup, y el catalogo de
+`known_questions`). Sin build step, api vanilla-JS, encaja con el patron de
+HTML autocontenido del resto del proyecto. Las animaciones son CSS puro
+(transitions/keyframes), no se agrego libreria aparte para eso.
+
+**Pestaña Logs**: pensada para identificar a mano que preguntas necesitan una
+pregunta pre-armada en Metabase (mismo patron que el modelo id 207) -- muestra
+timestamp, cliente, conexion usada, latencia, llamadas MCP, costo, y
+pregunta/error, con filtro "solo errores". Lee de `queryLogs()` en `metrics.js`.
+
+Aun NO desplegado a produccion (`analyst-bi.epic.gt`) -- solo existe en
+`epic-analyst-beta.epicgt.workers.dev/admin/`. Para promoverlo hay que agregar
+a `wrangler.jsonc`: el KV `CONNECTIONS_STORE`, y los secrets `ADMIN_PASSWORD` +
+`CF_API_TOKEN_WORKERS_EDIT` + vars `WORKER_SCRIPT_NAME`/`METRICS_DATASET_NAME`.
+
 ## Otras notas de contexto
 
 - El aislamiento de "solo puedes ver la colección X" es por **prompt**, no por
