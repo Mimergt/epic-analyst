@@ -12,6 +12,11 @@ import { askEpicAnalyst } from './agent.js';
 import { getClient, listClientsSafe } from './clients.js';
 import { estimateCostUsd } from './pricing.js';
 import { logUsageEvent, querySummary } from './metrics.js';
+import { getValidAccessToken, forceRefresh } from './metabase-auth.js';
+
+// Mensaje que devuelve la API de Anthropic cuando el token OAuth de Metabase
+// ya no es valido (expirado, revocado, etc).
+const MCP_AUTH_ERROR_SNIPPET = 'Authentication error while communicating with MCP server';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -51,15 +56,21 @@ async function handleChat(request, env) {
     return json({ error: `Cliente "${effectiveClientId}" no configurado.` }, { status: 404 });
   }
 
-  const metabaseOAuthToken = env[clientConfig.metabase_oauth_token_secret];
-
   try {
-    const result = await askEpicAnalyst({
-      question: question.trim(),
-      clientConfig,
-      metabaseOAuthToken,
-      env,
-    });
+    let metabaseOAuthToken = await getValidAccessToken(effectiveClientId, clientConfig, env);
+
+    let result;
+    try {
+      result = await askEpicAnalyst({ question: question.trim(), clientConfig, metabaseOAuthToken, env });
+    } catch (err) {
+      // El token puede haber quedado invalido entre que lo leimos y lo usamos
+      // (o el refresh proactivo fallo silenciosamente). Un solo reintento
+      // forzando renovacion evita que el usuario vea el error de golpe.
+      if (!(err.message || '').includes(MCP_AUTH_ERROR_SNIPPET)) throw err;
+
+      metabaseOAuthToken = await forceRefresh(effectiveClientId, clientConfig, env);
+      result = await askEpicAnalyst({ question: question.trim(), clientConfig, metabaseOAuthToken, env });
+    }
 
     const latencyMs = Date.now() - startedAt;
     const estimatedCost = estimateCostUsd(result.usage, env);

@@ -12,7 +12,14 @@
 export const CLIENTS = {
   dlp: {
     display_name: 'Del Puente',
+    // access_token estatico, usado solo como fallback si nunca se hizo el
+    // bootstrap de refresh automatico (ver src/metabase-auth.js) o si el KV
+    // esta vacio.
     metabase_oauth_token_secret: 'METABASE_OAUTH_TOKEN_DEFAULT',
+    // refresh_token + client_id obtenidos una sola vez con el MCP Inspector
+    // (ver README), habilitan la renovacion automatica sin intervencion manual.
+    metabase_oauth_refresh_token_secret: 'METABASE_OAUTH_REFRESH_TOKEN_DEFAULT',
+    metabase_oauth_client_id_secret: 'METABASE_OAUTH_CLIENT_ID_DEFAULT',
     allowed_collection_name: 'DLP',
     allowed_collection_description:
       'Coleccion de Metabase con todos los modelos, bases y dashboards del ecommerce de Del Puente (venta de hamburguesas): pedidos, items/productos, tiendas, metodos de pago, tipo de entrega, tickets promedio y analisis de ventas por periodo.',

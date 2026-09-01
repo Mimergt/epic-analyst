@@ -33,6 +33,16 @@
     }
   ],
 
+  // Guarda el access_token/refresh_token vigente de OAuth de Metabase por
+  // cliente, para poder renovarlo automaticamente sin intervencion manual.
+  // Ver src/metabase-auth.js.
+  "kv_namespaces": [
+    {
+      "binding": "METABASE_TOKEN_STORE",
+      "id": "928edf940b824e4c9f3f727a38de5aad"
+    }
+  ],
+
   // Variables NO secretas (visibles en el dashboard). Los secretos reales
   // (ANTHROPIC_API_KEY, tokens OAuth de Metabase) van con `wrangler secret put`,
   // nunca aqui. Ver README para el detalle de cada uno.
