@@ -221,6 +221,43 @@ clientes reales — el usuario pidió explícitamente evitar esa nomenclatura.
   https://dlpdash.epic.gt/dashboard/6-del-puente-analisis-ecommerce
 - Moneda del negocio: quetzales guatemaltecos (Q / GTQ).
 
+## Modelo pre-agregado para cruces de dimensiones (`cross_dimension_model`)
+
+Las preguntas que cruzan mas de una dimension (ej. "ventas por tienda Y por
+metodo de pago") eran las mas lentas (44s+, 6+ llamadas MCP) porque no habia
+ninguna pregunta guardada que ya las combinara, y forzar al modelo a agregar
+sobre pedidos crudos (miles de filas, con un monton de logica CASE/JSON) era
+lento y poco confiable.
+
+**Intento fallido primero**: darle a Claude el esquema y decirle que use
+`execute_sql` con la sintaxis de referencia de Metabase `{{#113-...}}` para
+traer el modelo base como subquery. Esto rompe: `execute_sql` manda el SQL
+tal cual a Postgres SIN pasar por el procesador de queries de Metabase que
+expande esos template tags, asi que Postgres ve las llaves literales y tira
+`syntax error at or near "{"`. La sintaxis `{{#id}}` SOLO funciona dentro de
+preguntas nativas guardadas/ejecutadas a traves del query processor de
+Metabase (`construct_query`/`execute_query`, o el editor de Metabase), nunca
+con `execute_sql` directo. Este intento fallido tambien vacio el balance de
+Anthropic de la cuenta (~$0.25 por intento, varios intentos en loop de
+autocorreccion) — cuidado si se vuelve a intentar ese camino.
+
+**Solucion real**: se creo una pregunta guardada en Metabase (id 207,
+`Analyst_agent - Resumen diario por tienda/pago/entrega`, colección DLP) que
+pre-agrega los pedidos por dia + tienda + metodo_pago_grupo + tipo_entrega +
+status_label (una fila por combinacion diaria, no por pedido individual).
+Configurado en `clients.js` como `cross_dimension_model` (entity_id
+`VY-ISZotPw8FnyoPD1kD1`), inyectado en el prompt (`agent.js`,
+`crossDimensionBlock`). El agente debe usarlo con `construct_query` +
+`execute_query` (referenciandolo como `source-card`), filtrando y volviendo a
+agregar sobre esas filas YA agregadas — nunca con `execute_question` (esa
+pregunta no tiene parametros/filtros) ni con SQL nativo a mano.
+
+Si se necesitan mas cruces en el futuro (ej. por producto), el patron a
+seguir es el mismo: crear una pregunta guardada pre-agregada en la coleccion
+DLP referenciando el modelo 113 (o el 82 para nivel de item/producto) como
+`source-card`, agregarla a `cross_dimension_model` o a `known_questions`
+segun si necesita filtros propios o se ejecuta tal cual.
+
 ## Bug ya resuelto: `pause_turn` rompía turnos largos de MCP
 
 En `src/agent.js`, el loop de continuación insertaba un mensaje de usuario
