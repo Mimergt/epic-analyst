@@ -125,6 +125,30 @@ formato de JSON documentado directamente en el system prompt de `agent.js`
 AMBOS lugares (el ejemplo de JSON en el prompt, y el render + dispatcher
 `addChart` en el frontend).
 
+## Frontend v2 (`/v2/`), embebible en Metabase
+
+`frontend/index.html` (root, `/`) es la version original y se dejo intacta a
+proposito — sigue siendo el chat "de referencia" con metricas visibles
+(latencia, tokens, num de consultas MCP, costo).
+
+`frontend/v2/index.html` (sirve en `/v2/` automaticamente, mismo binding de
+Assets, sin tocar `wrangler.jsonc`) es la version pensada para embeber dentro
+de Metabase (el usuario va a mostrar las metricas de uso ahi en vez de en el
+chat). Diferencias clave respecto al root:
+- Sin footer de metricas (nada de latencia/tokens/costo visible al usuario).
+- La grafica es el elemento principal: ocupa el ancho completo de la tarjeta
+  de respuesta (no una burbuja al 75% como el root), el SVG es mas grande
+  (640x300 vs 480x220), y el texto es solo una linea/caption chica debajo de
+  la grafica, no una burbuja de chat tradicional.
+- Ambas versiones pegan al mismo backend (`/api/chat`, `/api/clients`) — no
+  hay duplicacion de logica de negocio, solo de presentacion.
+
+Si se agrega un tipo de grafica nuevo, hay que replicar el render en AMBOS
+archivos (`frontend/index.html` y `frontend/v2/index.html`), ya que cada uno
+tiene su propia copia de las funciones `render*` (se evito una dependencia
+compartida a proposito para mantener cada HTML autocontenido y facil de leer
+de un vistazo).
+
 ## Punto frágil a vigilar: el token OAuth de Metabase
 
 `METABASE_OAUTH_TOKEN_DEFAULT` es un access token OAuth2 de vida corta, obtenido
