@@ -149,20 +149,58 @@ tiene su propia copia de las funciones `render*` (se evito una dependencia
 compartida a proposito para mantener cada HTML autocontenido y facil de leer
 de un vistazo).
 
-## Punto frágil a vigilar: el token OAuth de Metabase
+## El token OAuth de Metabase ahora se renueva SOLO (`src/metabase-auth.js`)
 
-`METABASE_OAUTH_TOKEN_DEFAULT` es un access token OAuth2 de vida corta, obtenido
-manualmente con el MCP Inspector (`npx @modelcontextprotocol/inspector@latest`,
-transport "Streamable HTTP", URL `https://dlpdash.epic.gt/api/metabase-mcp`,
-login real contra Metabase, luego copiar el `access_token` de la pestaña
-Auth/Network). **Este MVP no lo refresca automáticamente.**
+Antes (hasta 2026-08-31) el `access_token` era estatico y expiraba cada ~1 hora
+(`expires_in: 3600`, confirmado inspeccionando la respuesta real del token
+endpoint), lo que rompia el chat sin aviso. Se resolvio implementando refresh
+automatico via OAuth2 `refresh_token` grant + Cloudflare KV
+(`METABASE_TOKEN_STORE`, namespace id `928edf940b824e4c9f3f727a38de5aad`,
+declarado en `wrangler.jsonc`):
 
-Si el chat en producción empieza a fallar con errores de autenticación al
-consultar Metabase, hay que repetir ese proceso y volver a correr:
-```bash
-npx wrangler secret put METABASE_OAUTH_TOKEN_DEFAULT
-```
-(desde `~/dev/epic-analyst-cf`, nunca desde la copia de iCloud).
+- `getValidAccessToken(clientId, clientConfig, env)`: lee el token vigente de
+  KV; si esta por expirar (buffer de 60s), renueva antes de devolverlo.
+- `forceRefresh(...)`: llama al token endpoint de Metabase
+  (`https://dlpdash.epic.gt/oauth/token`) con `grant_type=refresh_token`, y
+  guarda el resultado (access_token + refresh_token + expires_at) de vuelta en
+  KV. Los secrets de Wrangler (`METABASE_OAUTH_REFRESH_TOKEN_DEFAULT`,
+  `METABASE_OAUTH_CLIENT_ID_DEFAULT`) son solo la "semilla" inicial — una vez
+  que KV tiene un refresh_token propio, se usa ese (importante porque Metabase
+  **rota el refresh_token en cada uso**, es de un solo uso).
+- En `src/index.js`, `handleChat` tiene un reintento: si Claude devuelve el
+  error "Authentication error while communicating with MCP server" (el token
+  quedo invalido entre que se leyo y se uso), fuerza un refresh y reintenta
+  una vez mas antes de fallarle al usuario.
+
+Parametro critico que no es obvio: el request al token endpoint DEBE incluir
+`resource=https://dlpdash.epic.gt/api/metabase-mcp` (RFC 8707 Resource
+Indicators, parte del spec de autorizacion de MCP). Sin ese parametro,
+Metabase responde `400 invalid_request` sin mas detalle — si esto vuelve a
+fallar, revisar primero que `env.METABASE_MCP_URL` se este pasando bien como
+`resource` en `refreshWithToken()`.
+
+**Como obtener el refresh_token/client_id iniciales** (solo hace falta una vez,
+o si el refresh_token guardado en KV se invalida por alguna razon externa —
+ej. alguien revoca el acceso desde Metabase, o el KV se borra): el MCP
+Inspector NO muestra el `refresh_token` en su UI, solo el `access_token`. Hay
+que sacarlo de su almacenamiento interno:
+1. Correr `npx @modelcontextprotocol/inspector@latest`, conectar al server
+   (Streamable HTTP, `https://dlpdash.epic.gt/api/metabase-mcp`), completar el
+   login real.
+2. El Inspector imprime en su log un `MCP_INSPECTOR_API_TOKEN` — con ese, se
+   puede golpear su propio endpoint interno de storage:
+   ```js
+   await fetch('/api/storage/oauth', { headers: { 'x-mcp-remote-auth': 'Bearer <MCP_INSPECTOR_API_TOKEN>' } }).then(r => r.json())
+   ```
+   (ejecutar esto en la consola del navegador, en la pestaña del Inspector
+   mismo — es same-origin). La respuesta trae `clientInformation.client_id` y
+   `tokens.refresh_token` / `tokens.access_token` / `tokens.expires_in`.
+3. Guardar esos 3 valores con `wrangler secret put` (`METABASE_OAUTH_TOKEN_DEFAULT`,
+   `METABASE_OAUTH_REFRESH_TOKEN_DEFAULT`, `METABASE_OAUTH_CLIENT_ID_DEFAULT`).
+   Ojo: el refresh_token es de un solo uso — si se prueba manualmente con curl
+   antes de guardarlo en Wrangler, se rota y el valor guardado queda invalido.
+   Sacar los valores, guardarlos, y no volver a "probarlos" aparte hasta que
+   esten en el secret.
 
 ## Cliente real en producción: DLP (Del Puente)
 
