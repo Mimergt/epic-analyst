@@ -58,6 +58,19 @@ export const CLIENTS = {
       { id: 83, desc: 'Top 5 productos del trimestre' },
       { id: 78, desc: 'Total de pedidos' },
     ],
+    // Modelo pre-agregado (creado 2026-09-01, id 207 en Metabase) para
+    // preguntas que cruzan varias dimensiones y no calzan con ninguna
+    // pregunta guardada de arriba. Ya viene sumado por dia/tienda/metodo de
+    // pago/tipo de entrega/estado, asi que filtrar y re-agrupar sobre el es
+    // mucho mas rapido que agregar desde pedidos crudos (la tabla es miles
+    // de filas en vez de decenas de miles). NO usar con execute_question (no
+    // soporta filtros); usar con construct_query + execute_query.
+    cross_dimension_model: {
+      entity_id: 'VY-ISZotPw8FnyoPD1kD1',
+      question_id: 207,
+      description:
+        'Modelo "Analyst_agent - Resumen diario por tienda/pago/entrega": una fila por combinacion de dia + tienda + metodo_pago_grupo (Efectivo/Tarjeta) + tipo_entrega (delivery/pickup) + status_label (Completada/Cancelada/Fallida), con columnas ya agregadas count, sum, avg (del monto total). Para responder cruces (ej. ventas por tienda Y metodo de pago este mes), usa construct_query con este modelo como source-card, filtra por fecha/status_label segun se necesite, y vuelve a agrupar/sumar sobre estas filas ya agregadas (no hace falta bajar a pedidos individuales).',
+    },
   },
 
   // cliente_b: {

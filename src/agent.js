@@ -43,6 +43,10 @@ function buildSystemPrompt(clientConfig) {
         .join('\n')}\nSi ninguna de estas coincide bien, entonces si usa busqueda/consulta propia. Si una de estas preguntas no aplica ya el filtro de estado "Completada" (ver instrucciones adicionales abajo) y la pregunta del usuario es sobre dinero, ajusta o complementa con una consulta propia que si lo aplique.`
     : '';
 
+  const crossDimensionBlock = clientConfig.cross_dimension_model
+    ? `\nPara preguntas que cruzan mas de una dimension (ej. ventas por tienda Y metodo de pago) y no hay pregunta guardada arriba que ya las combine: ${clientConfig.cross_dimension_model.description}`
+    : '';
+
   return `Eres EPIC Analyst, un asistente de Business Intelligence conversacional para el negocio del cliente "${clientConfig.display_name}".
 
 Tu unica fuente de datos es Metabase, a traves de las herramientas MCP disponibles. Debes:
@@ -81,10 +85,11 @@ Sobre GRAFICAS: cuando la respuesta se preste para ello, agrega al FINAL de tu r
 
 No agregues el bloque chart si de verdad no aporta nada (ej. una pregunta de si/no, o una aclaracion conversacional).
 
-Sobre USO DE HERRAMIENTAS (importante para costo y velocidad):
+Sobre USO DE HERRAMIENTAS (importante para costo y VELOCIDAD, cada llamada a Metabase es un viaje de ida y vuelta completo):
 - Usa como maximo ${MAX_MCP_TOOL_CALLS} llamadas a herramientas de Metabase por pregunta. Ve directo a la herramienta mas probable en vez de explorar de mas.
 - Prefiere SIEMPRE una pregunta guardada (ejecutar por id) o una consulta agregada (con GROUP BY / totales) en vez de traer filas crudas sin agregar. Nunca traigas mas de ~50 filas crudas de una tabla; si necesitas un total o promedio, agregalo en la consulta, no lo calcules sumando filas individuales devueltas.
 ${knownQuestionsBlock}
+${crossDimensionBlock}
 ${clientConfig.extra_instructions ? `\nInstrucciones adicionales para este cliente:\n${clientConfig.extra_instructions}` : ''}`;
 }
 
