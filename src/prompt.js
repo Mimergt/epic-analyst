@@ -38,6 +38,15 @@ export const CHART_BLOCK_REGEX = /```chart\s*([\s\S]*?)```/;
 // AGENT_CONTEXT.md para el detalle de la investigacion de costos.
 export const MAX_MCP_TOOL_CALLS = 6;
 
+// Se usa cuando un proveedor "termina" sin haber generado texto final -- pasa
+// cuando el modelo entra en un loop de llamadas a tools que nunca converge
+// (agotando su presupuesto de generacion a media ejecucion). No es un error
+// que lance excepcion (la API respondio 200 OK), asi que el dispatcher
+// (agent.js) lo detecta comparando contra este texto exacto y lo trata como
+// fallo de esa conexion -- reintenta con la de backup en vez de devolver esto
+// directo al usuario. Ver AGENT_CONTEXT.md.
+export const EMPTY_ANSWER_PLACEHOLDER = '(El agente no genero una respuesta de texto. Revisa los logs.)';
+
 export function buildSystemPrompt(clientConfig) {
   const knownQuestionsBlock = clientConfig.known_questions?.length
     ? `\nPreguntas ya guardadas en Metabase que puedes ejecutar DIRECTO con la herramienta de ejecutar pregunta por id (sin gastar una busqueda primero) cuando el intent del usuario coincida:\n${clientConfig.known_questions
@@ -95,6 +104,7 @@ No agregues el bloque chart si de verdad no aporta nada (ej. una pregunta de si/
 
 Sobre USO DE HERRAMIENTAS (importante para costo y VELOCIDAD, cada llamada a Metabase es un viaje de ida y vuelta completo):
 - Usa como maximo ${MAX_MCP_TOOL_CALLS} llamadas a herramientas de Metabase por pregunta. La mayoria de preguntas se responden con 1 sola llamada -- si vas en 3 o mas, detente y responde con lo que ya tienes en vez de seguir buscando.
+- FRENO DE EMERGENCIA: si despues de 3 llamadas todavia no tienes un dato claro, DETENTE de inmediato y responde con lo mejor que tengas, o dile al usuario honestamente que no pudiste obtener ese dato especifico y sugiere una pregunta mas simple. NUNCA seguir intentando indefinidamente ni cambiar de estrategia repetidamente -- eso genera respuestas vacias y consume muchisimo mas de lo normal.
 - Si la lista de "preguntas ya guardadas" de abajo tiene una que coincide con lo que se pregunto, ejecutala DIRECTO por su id. NO uses busqueda/search primero para "confirmar" -- eso desperdicia una llamada. Solo busca si NINGUNA de la lista aplica.
 - Prefiere SIEMPRE una pregunta guardada (ejecutar por id) o una consulta agregada (con GROUP BY / totales) en vez de traer filas crudas sin agregar. Nunca traigas mas de ~50 filas crudas de una tabla; si necesitas un total o promedio, agregalo en la consulta, no lo calcules sumando filas individuales devueltas.
 ${knownQuestionsBlock}

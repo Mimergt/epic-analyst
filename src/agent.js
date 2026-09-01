@@ -13,6 +13,7 @@
 import * as anthropicProvider from './providers/anthropic.js';
 import * as openaiProvider from './providers/openai.js';
 import { getConnections } from './connections.js';
+import { EMPTY_ANSWER_PLACEHOLDER } from './prompt.js';
 
 const PROVIDERS = {
   anthropic: anthropicProvider,
@@ -50,6 +51,18 @@ export async function askEpicAnalyst({ question, clientConfig, metabaseOAuthToke
 
     try {
       const result = await provider.ask({ question, clientConfig, metabaseOAuthToken, env, apiKey, model });
+
+      // La API pudo responder 200 OK pero sin texto final (el modelo entro en
+      // un loop de tool-calls que nunca converge, consumiendo su presupuesto
+      // de generacion a media ejecucion). Eso NO lanza excepcion, asi que sin
+      // esto el dispatcher lo devolveria como si fuera un exito y nunca
+      // probaria la conexion de backup. Ver AGENT_CONTEXT.md.
+      if (result.answer === EMPTY_ANSWER_PLACEHOLDER) {
+        console.error(`Conexion ${attempt.role} (${providerName}) respondio sin texto final (${result.numMcpToolCalls} llamadas MCP).`);
+        lastError = new Error(`La conexion ${attempt.role} (${providerName}) no genero respuesta (probable loop de tool-calls).`);
+        continue;
+      }
+
       return { ...result, connectionUsed: `${attempt.role}:${providerName}:${model}` };
     } catch (err) {
       console.error(`Conexion ${attempt.role} (${providerName}) fallo:`, err.message);

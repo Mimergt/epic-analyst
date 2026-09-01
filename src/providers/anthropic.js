@@ -8,7 +8,7 @@
 // devuelve { answer, chart, usage, numModelCalls, numMcpToolCalls, stopReason }.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { buildSystemPrompt, extractChart, BLOCKED_MCP_TOOLS, MAX_MCP_TOOL_CALLS } from '../prompt.js';
+import { buildSystemPrompt, extractChart, BLOCKED_MCP_TOOLS, MAX_MCP_TOOL_CALLS, EMPTY_ANSWER_PLACEHOLDER } from '../prompt.js';
 
 export async function ask({ question, clientConfig, metabaseOAuthToken, env, apiKey, model }) {
   const METABASE_MCP_URL = env.METABASE_MCP_URL;
@@ -117,7 +117,7 @@ export async function ask({ question, clientConfig, metabaseOAuthToken, env, api
   const { answer, chart } = extractChart(rawText);
 
   return {
-    answer: answer || '(El agente no genero una respuesta de texto. Revisa los logs.)',
+    answer: answer || EMPTY_ANSWER_PLACEHOLDER,
     chart,
     usage: usageTotals,
     numModelCalls,

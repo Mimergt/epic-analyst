@@ -13,7 +13,7 @@
 // AGENT_CONTEXT.md) -- por eso el parseo es defensivo (busca por tipo en vez
 // de asumir una posicion fija).
 
-import { buildSystemPrompt, extractChart, BLOCKED_MCP_TOOLS } from '../prompt.js';
+import { buildSystemPrompt, extractChart, BLOCKED_MCP_TOOLS, EMPTY_ANSWER_PLACEHOLDER } from '../prompt.js';
 
 const RESPONSES_ENDPOINT = 'https://api.openai.com/v1/responses';
 
@@ -101,7 +101,7 @@ export async function ask({ question, clientConfig, metabaseOAuthToken, env, api
   const usage = data.usage || {};
 
   return {
-    answer: answer || '(El agente no genero una respuesta de texto. Revisa los logs.)',
+    answer: answer || EMPTY_ANSWER_PLACEHOLDER,
     chart,
     usage: {
       input_tokens: usage.input_tokens || 0,
