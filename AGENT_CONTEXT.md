@@ -61,6 +61,28 @@ y copiar `.dev.vars` desde la copia de iCloud (no está en git, tiene secretos).
   dashboard de Cloudflare (Workers & Pages → Analytics Engine → Create Dataset)
   porque la cuenta lo pedía como paso explícito antes de aceptar el binding.
 
+## Graficas: se descarto el embedding de Metabase, son SVG propio
+
+Se intento primero mostrar graficas via "static embedding" de Metabase (iframe
+firmado con JWT, `Admin > Settings > Embedding`). Se abandono ese camino porque
+Metabase exige activar el embedding **pregunta por pregunta** (no basta el
+secret global), lo cual es inviable con ~75 preguntas en la coleccion DLP, y
+ademas dio errores 403 incluso activandolo (posible bug/particularidad de la
+version 0.63.10 del usuario). Existe un secret `METABASE_EMBEDDING_SECRET` en
+Cloudflare que quedo huerfano de ese intento — es inofensivo dejarlo, no se usa
+en ningun archivo del repo.
+
+La solucion que SI quedo en produccion: el system prompt (`src/agent.js`)
+instruye a Claude a que, cuando la respuesta se preste para una grafica,
+agregue al final de su texto un bloque \`\`\`chart con JSON
+(`{"type":"bar"|"line","title":...,"series":[{"name":...,"data":[{"label":...,"value":...}]}]}`).
+El backend lo extrae con una regex, lo saca del texto visible, y lo devuelve
+como `chart` en la respuesta de `/api/chat`. El frontend (`frontend/index.html`,
+funciones `renderBarChart`/`renderLineChart`/`addChart`) lo dibuja con SVG
+hecho a mano, sin ninguna libreria de graficas ni dependencia de Metabase para
+el render. Si se necesita otro tipo de grafica (pie, area, etc.), agregar el
+tipo tanto en el prompt como en el frontend.
+
 ## Punto frágil a vigilar: el token OAuth de Metabase
 
 `METABASE_OAUTH_TOKEN_DEFAULT` es un access token OAuth2 de vida corta, obtenido
