@@ -76,9 +76,48 @@ npx wrangler secret put METABASE_OAUTH_TOKEN_DEFAULT
 ```
 (desde `~/dev/epic-analyst-cf`, nunca desde la copia de iCloud).
 
+## Cliente real en producción: DLP (Del Puente)
+
+El único cliente configurado hoy en `src/clients.js` es `dlp` ("Del Puente"),
+un ecommerce de hamburguesas. Ya no se usan nombres tipo "default"/"demo" para
+clientes reales — el usuario pidió explícitamente evitar esa nomenclatura.
+
+- El alcance del agente es la **colección de Metabase "DLP"** (id 5), no un
+  solo Model — esa colección contiene todos los modelos, preguntas y
+  dashboards del negocio: `dlp-Pedidos (Base) - V2.3`, `dlp-Items (Base)`,
+  `dlp-Productos-Extras (Base)`, y ~75 preguntas/dashboards derivados (ventas
+  por tienda, ticket promedio, top productos, métodos de pago, tipo de
+  entrega, etc.).
+- Por eso `clients.js` usa los campos `allowed_collection_name` /
+  `allowed_collection_description` (no `allowed_model_name` — ese nombre de
+  campo quedó obsoleto y ya no existe en el código).
+- Dashboard de referencia del cliente:
+  https://dlpdash.epic.gt/dashboard/6-del-puente-analisis-ecommerce
+- Moneda del negocio: quetzales guatemaltecos (Q / GTQ).
+
+## Bug ya resuelto: `pause_turn` rompía turnos largos de MCP
+
+En `src/agent.js`, el loop de continuación insertaba un mensaje de usuario
+`"Continua."` cada vez que `stop_reason` era `pause_turn`. Eso es incorrecto:
+cuando la API pausa un turno largo (a media ejecución de una tool de MCP), hay
+que reenviar la conversación **tal cual**, sin insertar un turno de usuario
+nuevo — si no, se puede quedar un bloque `mcp_tool_use` sin su
+`mcp_tool_result` correspondiente y la API siguiente rechaza la request con
+`400 invalid_request_error`. Se quitó ese mensaje y se subió `max_tokens` de
+1500 a 4096 para reducir la frecuencia de `pause_turn`. Si vuelve a aparecer
+ese error 400 mencionando `mcp_tool_use ... without a corresponding
+mcp_tool_result`, revisar primero que este fix siga en su lugar antes de
+buscar otra causa.
+
+Nota de costo/latencia observada: preguntas que requieren que el agente
+*busque* qué pregunta de Metabase usar (en vez de una ya conocida) pueden
+disparar 15-20 llamadas MCP y tardar 50s+ costando ~$0.50. No es un bug, pero
+es una oportunidad de optimización futura (cachear qué IDs de pregunta
+resuelven qué intenciones típicas) si el volumen de uso lo justifica.
+
 ## Otras notas de contexto
 
-- El aislamiento de "solo puedes ver el Model X" es por **prompt**, no por
+- El aislamiento de "solo puedes ver la colección X" es por **prompt**, no por
   permisos de Metabase (ver advertencia detallada en el README). No convertir
   esto en un control de seguridad real sin que el usuario lo pida explícitamente
   — es una decisión consciente para el MVP.
