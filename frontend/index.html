@@ -98,6 +98,7 @@
   }
 
   .chart-wrap {
+    position: relative;
     margin-top: 10px;
     padding: 12px;
     background: var(--panel-2);
@@ -109,6 +110,7 @@
     font-size: 12.5px;
     color: var(--text-dim);
     margin-bottom: 8px;
+    padding-right: 30px;
   }
   .chart-bar-label, .chart-bar-value, .chart-axis-label {
     font-size: 10.5px;
@@ -141,19 +143,28 @@
   .msg-actions {
     display: flex;
     gap: 8px;
-    margin-top: 8px;
+    margin-top: 6px;
     flex-basis: 100%;
   }
-  .msg-actions button {
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
     background: var(--panel-2);
     border: 1px solid var(--border);
     color: var(--text-dim);
     border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 11.5px;
     cursor: pointer;
   }
-  .msg-actions button:hover { color: var(--text); border-color: var(--accent); }
+  .icon-btn:hover { color: var(--text); border-color: var(--accent); }
+  .chart-download-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
 
   .typing { display: flex; gap: 4px; padding: 4px 0; }
   .typing span {
@@ -465,9 +476,19 @@
 
     const wrap = document.createElement('div');
     wrap.className = 'chart-wrap' + (chart.type === 'kpi' ? ' chart-wrap-kpi' : '');
-    wrap.innerHTML = (chart.title ? `<div class="chart-title">${escapeXml(chart.title)}</div>` : '') + body;
+    wrap.innerHTML = (chart.title ? `<div class="chart-title">${escapeXml(chart.title)}</div>` : '') + body + (chart.type !== 'kpi' ? ICON_DOWNLOAD_BTN : '');
     bubble.parentElement.appendChild(wrap);
+
+    const downloadBtn = wrap.querySelector('[data-action="download"]');
+    if (downloadBtn) {
+      downloadBtn.addEventListener('click', () => downloadSvg(wrap.querySelector('svg')));
+    }
   }
+
+  const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>';
+  const ICON_COPY = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const ICON_CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  const ICON_DOWNLOAD_BTN = `<button type="button" class="icon-btn chart-download-btn" data-action="download" title="Descargar gráfica">${ICON_DOWNLOAD}</button>`;
 
   function downloadSvg(svgEl) {
     if (!svgEl) return;
@@ -511,31 +532,21 @@
   }
 
   function addActions(bubble, answerText) {
-    const msgParent = bubble.parentElement;
-    const svg = msgParent.querySelector('.chart-wrap svg');
-
     const toolbar = document.createElement('div');
     toolbar.className = 'msg-actions';
-    toolbar.innerHTML = `
-      <button type="button" data-action="copy">Copiar</button>
-      ${svg ? '<button type="button" data-action="download">Descargar gráfica</button>' : ''}
-    `;
-    msgParent.appendChild(toolbar);
+    toolbar.innerHTML = `<button type="button" class="icon-btn" data-action="copy" title="Copiar respuesta">${ICON_COPY}</button>`;
+    bubble.parentElement.appendChild(toolbar);
 
-    toolbar.querySelector('[data-action="copy"]').addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
+    const copyBtn = toolbar.querySelector('[data-action="copy"]');
+    copyBtn.addEventListener('click', async () => {
       const ok = await copyText(answerText);
-      const original = btn.textContent;
-      btn.textContent = ok ? 'Copiado ✓' : 'No se pudo copiar';
-      setTimeout(() => { btn.textContent = original; }, 1500);
+      copyBtn.innerHTML = ok ? ICON_CHECK : ICON_COPY;
+      copyBtn.title = ok ? 'Copiado' : 'No se pudo copiar';
+      setTimeout(() => {
+        copyBtn.innerHTML = ICON_COPY;
+        copyBtn.title = 'Copiar respuesta';
+      }, 1500);
     });
-
-    const downloadBtn = toolbar.querySelector('[data-action="download"]');
-    if (downloadBtn) {
-      downloadBtn.addEventListener('click', () => {
-        downloadSvg(msgParent.querySelector('.chart-wrap svg'));
-      });
-    }
   }
 
   async function loadClients() {
