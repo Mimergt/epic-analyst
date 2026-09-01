@@ -134,6 +134,22 @@
     margin-top: 6px;
   }
 
+  .msg-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .msg-actions button {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .msg-actions button:hover { color: var(--text); border-color: var(--accent); }
+
   .typing-card {
     padding: 16px;
     background: var(--panel-2);
@@ -476,6 +492,76 @@
     msg.appendChild(card);
     chatEl.appendChild(msg);
     chatEl.scrollTop = chatEl.scrollHeight;
+
+    addActions(card, answer);
+  }
+
+  function downloadSvg(svgEl) {
+    if (!svgEl) return;
+    const clone = svgEl.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    const svgString = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgString], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `grafica-epic-analyst-${Date.now()}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {}
+    }
+    // Fallback para navegadores/contextos donde la Clipboard API no esta
+    // disponible o el permiso viene bloqueado.
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function addActions(card, answerText) {
+    const svg = card.querySelector('.chart-wrap svg');
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'msg-actions';
+    toolbar.innerHTML = `
+      <button type="button" data-action="copy">Copiar</button>
+      ${svg ? '<button type="button" data-action="download">Descargar gráfica</button>' : ''}
+    `;
+    card.appendChild(toolbar);
+
+    toolbar.querySelector('[data-action="copy"]').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const ok = await copyText(answerText);
+      const original = btn.textContent;
+      btn.textContent = ok ? 'Copiado ✓' : 'No se pudo copiar';
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    });
+
+    const downloadBtn = toolbar.querySelector('[data-action="download"]');
+    if (downloadBtn) {
+      downloadBtn.addEventListener('click', () => {
+        downloadSvg(card.querySelector('.chart-wrap svg'));
+      });
+    }
   }
 
   async function loadClients() {
