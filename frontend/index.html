@@ -66,6 +66,11 @@
 
   .msg { display: flex; flex-wrap: wrap; gap: 10px; max-width: 100%; }
   .msg.user { justify-content: flex-end; }
+  .msg.bot {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
   .bubble {
     padding: 10px 14px;
     border-radius: 14px;
@@ -74,6 +79,12 @@
     white-space: pre-wrap;
     max-width: 75%;
   }
+  /* Respuesta del bot: la grafica va primero (arriba) y el texto despues
+     (abajo), apiladas en vez de en columnas una al lado de la otra. */
+  .msg.bot .bubble { max-width: 100%; order: 2; }
+  .msg.bot .chart-wrap { order: 1; margin-top: 0; margin-bottom: 10px; }
+  .msg.bot .msg-actions { order: 3; }
+  .msg.bot .meta { order: 4; }
   .msg.user .bubble {
     background: var(--user-bubble);
     border-bottom-right-radius: 4px;
