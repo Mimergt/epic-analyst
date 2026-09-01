@@ -9,10 +9,13 @@
 // automaticamente por el binding ASSETS configurado en wrangler.jsonc.
 
 import { askEpicAnalyst } from './agent.js';
-import { getClient, listClientsSafe } from './clients.js';
+import { listClientsSafe } from './clients.js';
+import { getClientConfig } from './client-config.js';
 import { estimateCostUsd } from './pricing.js';
 import { logUsageEvent, querySummary, queryDashboard } from './metrics.js';
 import { getValidAccessToken, forceRefresh } from './metabase-auth.js';
+import { isAdminAuthorized } from './admin-auth.js';
+import * as admin from './admin.js';
 
 // Mensaje que devuelve la API de Anthropic cuando el token OAuth de Metabase
 // ya no es valido (expirado, revocado, etc).
@@ -50,7 +53,7 @@ async function handleChat(request, env) {
   }
 
   const effectiveClientId = client_id || 'dlp';
-  const clientConfig = getClient(effectiveClientId);
+  const clientConfig = await getClientConfig(effectiveClientId, env);
 
   if (!clientConfig) {
     return json({ error: `Cliente "${effectiveClientId}" no configurado.` }, { status: 404 });
@@ -160,6 +163,58 @@ export default {
       const days = Number(url.searchParams.get('days')) || 30;
       const dashboard = await queryDashboard(env, { days });
       return json(dashboard);
+    }
+
+    if (url.pathname === '/api/admin/login' && request.method === 'POST') {
+      let loginBody;
+      try {
+        loginBody = await request.json();
+      } catch {
+        return json({ ok: false }, { status: 400 });
+      }
+      const ok = !!env.ADMIN_PASSWORD && loginBody?.password === env.ADMIN_PASSWORD;
+      return json({ ok }, { status: ok ? 200 : 401 });
+    }
+
+    if (url.pathname.startsWith('/api/admin/')) {
+      if (!isAdminAuthorized(request, env)) {
+        return json({ error: 'No autorizado.' }, { status: 401 });
+      }
+
+      try {
+        if (url.pathname === '/api/admin/config' && request.method === 'GET') {
+          return json(await admin.getAdminConfig(env));
+        }
+
+        if (url.pathname === '/api/admin/connections' && request.method === 'PUT') {
+          const body = await request.json();
+          return json(await admin.updateConnections(env, body));
+        }
+
+        const clientMatch = url.pathname.match(/^\/api\/admin\/client\/([^/]+)$/);
+        if (clientMatch && request.method === 'PUT') {
+          const body = await request.json();
+          return json(await admin.updateClientConfig(env, clientMatch[1], body));
+        }
+
+        if (url.pathname === '/api/admin/secret' && request.method === 'PUT') {
+          const body = await request.json();
+          await admin.updateSecret(env, body.name, body.value);
+          return json({ ok: true });
+        }
+
+        if (url.pathname === '/api/admin/logs' && request.method === 'GET') {
+          const limit = url.searchParams.get('limit');
+          const clientId = url.searchParams.get('client_id') || undefined;
+          const onlyErrors = url.searchParams.get('only_errors') === '1';
+          return json(await admin.getLogs(env, { limit, clientId, onlyErrors }));
+        }
+
+        return json({ error: 'Ruta de admin no encontrada.' }, { status: 404 });
+      } catch (err) {
+        console.error('Error en /api/admin:', err);
+        return json({ error: err.message || String(err) }, { status: 500 });
+      }
     }
 
     // Cualquier otra ruta: sirve el frontend estatico (SPA fallback a index.html).

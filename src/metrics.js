@@ -49,6 +49,14 @@ export function logUsageEvent(env, event) {
   });
 }
 
+// El nombre del dataset varia entre Worker de produccion ("epic_analyst_usage")
+// y el de beta ("epic_analyst_usage_beta") -- viene de una var no secreta
+// (METRICS_DATASET_NAME en wrangler.jsonc/wrangler.beta.jsonc), nunca
+// hardcodeado, para que el mismo codigo funcione en ambos sin tocar SQL.
+function datasetName(env) {
+  return env.METRICS_DATASET_NAME || 'epic_analyst_usage';
+}
+
 async function runAnalyticsQuery(env, sql) {
   const res = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
@@ -102,7 +110,7 @@ export async function querySummary(env, { clientId } = {}) {
       AVG(double7) AS avg_latency_ms,
       SUM(double8) AS total_estimated_cost_usd,
       SUM(double9) AS total_errors
-    FROM epic_analyst_usage
+    FROM ${datasetName(env)}
     ${where}
   `.trim();
 
@@ -127,6 +135,8 @@ export async function queryDashboard(env, { days = 30 } = {}) {
     };
   }
 
+  const ds = datasetName(env);
+
   const totalsSql = `
     SELECT
       SUM(_sample_interval) AS total_questions,
@@ -137,7 +147,7 @@ export async function queryDashboard(env, { days = 30 } = {}) {
       AVG(double7) AS avg_latency_ms,
       SUM(double8) AS total_estimated_cost_usd,
       SUM(double9) AS total_errors
-    FROM epic_analyst_usage
+    FROM ${ds}
     WHERE timestamp > NOW() - INTERVAL '${days}' DAY
   `.trim();
 
@@ -147,7 +157,7 @@ export async function queryDashboard(env, { days = 30 } = {}) {
       SUM(_sample_interval) AS total_questions,
       SUM(double8) AS total_estimated_cost_usd,
       SUM(double9) AS total_errors
-    FROM epic_analyst_usage
+    FROM ${ds}
     WHERE timestamp > NOW() - INTERVAL '${days}' DAY
     GROUP BY index1
     ORDER BY total_estimated_cost_usd DESC
@@ -158,24 +168,83 @@ export async function queryDashboard(env, { days = 30 } = {}) {
       toStartOfDay(timestamp) AS day,
       SUM(_sample_interval) AS total_questions,
       SUM(double8) AS total_estimated_cost_usd
-    FROM epic_analyst_usage
+    FROM ${ds}
     WHERE timestamp > NOW() - INTERVAL '${days}' DAY
     GROUP BY day
     ORDER BY day ASC
   `.trim();
 
+  const byConnectionSql = `
+    SELECT
+      blob4 AS connection_used,
+      SUM(_sample_interval) AS total_questions,
+      SUM(double8) AS total_estimated_cost_usd,
+      AVG(double7) AS avg_latency_ms
+    FROM ${ds}
+    WHERE timestamp > NOW() - INTERVAL '${days}' DAY AND blob4 != ''
+    GROUP BY connection_used
+    ORDER BY total_questions DESC
+  `.trim();
+
   try {
-    const [totalsRows, byClientRows, byDayRows] = await Promise.all([
+    const [totalsRows, byClientRows, byDayRows, byConnectionRows] = await Promise.all([
       runAnalyticsQuery(env, totalsSql),
       runAnalyticsQuery(env, byClientSql),
       runAnalyticsQuery(env, byDaySql),
+      runAnalyticsQuery(env, byConnectionSql),
     ]);
 
     return {
       totals: totalsRows[0] || null,
       by_client: byClientRows,
       by_day: byDayRows,
+      by_connection: byConnectionRows,
     };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Eventos recientes (para la pestaña de Logs del panel de administracion):
+ * pregunta, cliente, conexion usada, latencia, si hubo error, y cuando.
+ * Pensado para detectar a mano que tipo de preguntas necesitan una pregunta
+ * pre-armada en Metabase (ver AGENT_CONTEXT.md).
+ */
+export async function queryLogs(env, { limit = 100, clientId, onlyErrors = false } = {}) {
+  if (!env.CF_ACCOUNT_ID || !env.CF_ANALYTICS_API_TOKEN) {
+    return {
+      error:
+        'Falta configurar CF_ACCOUNT_ID y/o CF_ANALYTICS_API_TOKEN como secrets para poder leer metricas.',
+    };
+  }
+
+  const conditions = [];
+  if (clientId) conditions.push(`index1 = '${clientId.replace(/'/g, "''")}'`);
+  if (onlyErrors) conditions.push('double9 = 1');
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const sql = `
+    SELECT
+      timestamp,
+      index1 AS client_id,
+      blob1 AS question,
+      blob2 AS stop_reason,
+      blob3 AS error,
+      blob4 AS connection_used,
+      double7 AS latency_ms,
+      double6 AS num_mcp_tool_calls,
+      double8 AS estimated_cost_usd,
+      double9 AS is_error
+    FROM ${datasetName(env)}
+    ${where}
+    ORDER BY timestamp DESC
+    LIMIT ${Math.min(Math.max(Number(limit) || 100, 1), 500)}
+  `.trim();
+
+  try {
+    const rows = await runAnalyticsQuery(env, sql);
+    return { logs: rows };
   } catch (err) {
     return { error: err.message };
   }

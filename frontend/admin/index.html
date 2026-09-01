@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EPIC Analyst — Administración</title>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --panel-3: #262b36;
+    --border: #2a2f3a;
+    --text: #e8eaed;
+    --text-dim: #9aa2b1;
+    --accent: #6ea8fe;
+    --accent-2: #3d5afe;
+    --danger: #ff6b6b;
+    --success: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  button, input, select, textarea { font-family: inherit; color: inherit; }
+
+  /* ---------- Login gate ---------- */
+  #loginGate {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  #loginGate .box {
+    width: 100%; max-width: 320px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 28px; text-align: center;
+    animation: fadeUp 0.35s ease;
+  }
+  #loginGate h1 { font-size: 16px; margin: 0 0 4px; }
+  #loginGate p { font-size: 12.5px; color: var(--text-dim); margin: 0 0 18px; }
+  #loginGate input {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-bottom: 10px;
+  }
+  #loginGate button {
+    width: 100%; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: white; border: none; border-radius: 8px; padding: 10px; font-weight: 600;
+    font-size: 14px; cursor: pointer; transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+  #loginGate button:active { transform: scale(0.97); }
+  #loginGate .err { color: var(--danger); font-size: 12.5px; margin-top: 10px; min-height: 16px; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* ---------- Layout ---------- */
+  #app { display: none; }
+  #app.ready { display: flex; min-height: 100vh; }
+
+  aside {
+    width: 220px; flex-shrink: 0;
+    background: var(--panel); border-right: 1px solid var(--border);
+    padding: 20px 14px;
+  }
+  aside .brand { font-size: 14px; font-weight: 600; margin-bottom: 20px; padding: 0 6px; }
+  aside .proj-group { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin: 14px 6px 8px; }
+  aside .proj-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 10px; border-radius: 8px; font-size: 13.5px; cursor: pointer;
+    color: var(--text-dim); transition: background 0.15s ease, color 0.15s ease;
+  }
+  aside .proj-item .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  aside .proj-item:hover { background: var(--panel-2); color: var(--text); }
+  aside .proj-item.active { background: var(--panel-2); color: var(--text); font-weight: 500; }
+
+  main { flex: 1; min-width: 0; padding: 24px 32px; }
+
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+  }
+  header.top h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header.top .sub { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tabs button {
+    background: none; border: none; color: var(--text-dim);
+    padding: 10px 4px; font-size: 13.5px; cursor: pointer; position: relative;
+    margin-right: 18px; transition: color 0.15s ease;
+  }
+  .tabs button::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+    background: var(--accent); transform: scaleX(0); transition: transform 0.2s ease;
+  }
+  .tabs button:hover { color: var(--text); }
+  .tabs button.active { color: var(--text); }
+  .tabs button.active::after { transform: scaleX(1); }
+
+  .tab-panel { display: none; animation: fadeIn 0.25s ease; }
+  .tab-panel.active { display: block; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 13.5px; margin: 0 0 14px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  .card .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+  /* ---------- Conexiones ---------- */
+  #connectionsList { display: flex; flex-direction: column; gap: 10px; }
+  .conn-card {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; display: flex; align-items: center; gap: 12px;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  .conn-card.sortable-ghost { opacity: 0.35; }
+  .conn-card .handle {
+    cursor: grab; color: var(--text-dim); font-size: 16px; padding: 4px; user-select: none;
+    line-height: 1;
+  }
+  .conn-card .handle:active { cursor: grabbing; }
+  .conn-card .role-badge {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 3px 8px; border-radius: 999px; font-weight: 600; flex-shrink: 0;
+  }
+  .conn-card:first-child .role-badge { background: rgba(110,168,254,0.15); color: var(--accent); }
+  .conn-card:last-child .role-badge { background: var(--panel-3); color: var(--text-dim); }
+  .conn-card .fields { flex: 1; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .conn-card select, .conn-card input[type="text"] {
+    background: var(--panel-3); border: 1px solid var(--border); border-radius: 7px;
+    padding: 7px 10px; font-size: 13px;
+  }
+  .conn-card select { min-width: 110px; }
+  .conn-card input[type="text"] { min-width: 140px; }
+  .key-status { font-size: 11.5px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .key-status .indicator { width: 7px; height: 7px; border-radius: 50%; }
+  .key-status.ok .indicator { background: var(--success); }
+  .key-status.missing .indicator { background: var(--danger); }
+  .key-status.ok { color: var(--success); }
+  .key-status.missing { color: var(--danger); }
+
+  button.btn {
+    background: var(--panel-3); border: 1px solid var(--border); color: var(--text);
+    border-radius: 7px; padding: 7px 12px; font-size: 12.5px; cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.1s ease;
+  }
+  button.btn:hover { border-color: var(--accent); }
+  button.btn:active { transform: scale(0.97); }
+  button.btn.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border: none; color: white; font-weight: 600;
+  }
+  button.btn.small { padding: 5px 9px; font-size: 11.5px; }
+
+  textarea.ctx {
+    width: 100%; min-height: 110px; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; font-size: 13.5px; line-height: 1.5; resize: vertical;
+  }
+
+  /* ---------- Preguntas conocidas ---------- */
+  #knownQuestionsList { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .kq-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 13px;
+  }
+  .kq-row .handle { cursor: grab; color: var(--text-dim); user-select: none; }
+  .kq-row .id-badge {
+    background: var(--panel-3); border-radius: 6px; padding: 2px 7px; font-size: 11px;
+    color: var(--text-dim); flex-shrink: 0; min-width: 34px; text-align: center;
+  }
+  .kq-row .desc { flex: 1; }
+  .kq-row.sortable-ghost { opacity: 0.35; }
+  .kq-add-row { display: flex; gap: 8px; }
+  .kq-add-row input {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px;
+    padding: 7px 10px; font-size: 13px;
+  }
+  .kq-add-row input.id { width: 70px; }
+  .kq-add-row input.desc { flex: 1; }
+
+  /* ---------- Secret modal ---------- */
+  #secretModal {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.5); z-index: 40;
+  }
+  #secretModal.open { display: flex; animation: fadeIn 0.15s ease; }
+  #secretModal .box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; width: 100%; max-width: 360px; animation: fadeUp 0.2s ease;
+  }
+  #secretModal h3 { margin: 0 0 4px; font-size: 14px; }
+  #secretModal p { font-size: 12px; color: var(--text-dim); margin: 0 0 14px; }
+  #secretModal input {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 11px; font-size: 13px; margin-bottom: 12px;
+  }
+  #secretModal .actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ---------- Estadisticas ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .kpi .label { font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+  .kpi .value { font-size: 20px; font-weight: 600; }
+  .kpi .value.danger { color: var(--danger); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 500; font-size: 11px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.mono { font-family: ui-monospace, monospace; font-size: 11.5px; }
+
+  .chart-bar-label { font-size: 10px; fill: var(--text-dim); }
+
+  /* ---------- Logs ---------- */
+  .logs-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .logs-toolbar label { font-size: 12.5px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+  .badge-error { color: var(--danger); font-weight: 600; }
+  .badge-ok { color: var(--success); }
+  tr.log-error { background: rgba(255,107,107,0.06); }
+  .q-preview { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .empty { color: var(--text-dim); font-size: 13px; padding: 20px 0; text-align: center; }
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; z-index: 60;
+    background: var(--panel-3); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 16px; font-size: 13px; opacity: 0; transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="loginGate">
+  <div class="box">
+    <h1>EPIC Analyst — Admin</h1>
+    <p>Ingresa la contraseña de administración</p>
+    <input type="password" id="passwordInput" placeholder="Contraseña" autofocus />
+    <button id="loginBtn">Entrar</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <aside>
+    <div class="brand">EPIC Analyst</div>
+    <div class="proj-group">Proyectos</div>
+    <div id="projectList"></div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1 id="pageTitle">Del Puente</h1>
+        <div class="sub">Panel de administración</div>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="config">Configuración</button>
+      <button class="tab-btn" data-tab="stats">Estadísticas</button>
+      <button class="tab-btn" data-tab="logs">Logs</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-config">
+      <div class="card">
+        <h2>Conexiones (arrastra para cambiar cuál es principal)</h2>
+        <div id="connectionsList"></div>
+        <div class="hint">La primera es la conexión principal; si falla, se usa automáticamente la de abajo.</div>
+      </div>
+
+      <div class="card">
+        <h2>Contexto del negocio</h2>
+        <textarea class="ctx" id="ctxTextarea" placeholder="Instrucciones adicionales para este cliente (ej. moneda, reglas de negocio, qué estados de pedido usar)..."></textarea>
+        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+          <button class="btn primary" id="saveCtxBtn">Guardar contexto</button>
+          <span class="hint" id="ctxSaved" style="margin:0;"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Preguntas conocidas de Metabase (arrastra para priorizar)</h2>
+        <div id="knownQuestionsList"></div>
+        <div class="kq-add-row">
+          <input type="text" class="id" id="newKqId" placeholder="ID" />
+          <input type="text" class="desc" id="newKqDesc" placeholder="Descripción (ej. Ventas por tienda del mes)" />
+          <button class="btn" id="addKqBtn">Agregar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-stats">
+      <div id="statsContent"><div class="empty">Cargando...</div></div>
+    </div>
+
+    <div class="tab-panel" id="tab-logs">
+      <div class="logs-toolbar">
+        <label><input type="checkbox" id="onlyErrorsCheck" /> Solo errores</label>
+        <button class="btn small" id="refreshLogsBtn">Actualizar</button>
+      </div>
+      <div id="logsContent"><div class="empty">Cargando...</div></div>
+    </div>
+  </main>
+</div>
+
+<div id="secretModal">
+  <div class="box">
+    <h3 id="secretModalTitle">Actualizar API key</h3>
+    <p id="secretModalHint">El valor no se muestra nunca, solo se guarda.</p>
+    <input type="password" id="secretValueInput" placeholder="Pega el valor aquí" />
+    <div class="actions">
+      <button class="btn" id="secretCancelBtn">Cancelar</button>
+      <button class="btn primary" id="secretSaveBtn">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API_BASE = window.EPIC_ANALYST_API_BASE || '';
+  let adminPassword = sessionStorage.getItem('epic_admin_password') || '';
+  let currentConfig = null;
+  let activeClientId = 'dlp';
+  let currentSecretName = null;
+
+  const PROVIDER_MODELS = {
+    anthropic: ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5-20251001'],
+    openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'],
+  };
+  const SECRET_BY_PROVIDER = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY' };
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Password': adminPassword,
+        ...(opts.headers || {}),
+      },
+    });
+    if (res.status === 401) {
+      sessionStorage.removeItem('epic_admin_password');
+      location.reload();
+      throw new Error('No autorizado');
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+    return data;
+  }
+
+  // ---------- Login ----------
+  async function tryLogin(password) {
+    const res = await fetch(`${API_BASE}/api/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json();
+    return data.ok;
+  }
+
+  async function initAuth() {
+    if (adminPassword) {
+      const ok = await tryLogin(adminPassword);
+      if (ok) {
+        document.getElementById('loginGate').style.display = 'none';
+        document.getElementById('app').classList.add('ready');
+        loadAll();
+        return;
+      }
+      sessionStorage.removeItem('epic_admin_password');
+      adminPassword = '';
+    }
+    document.getElementById('loginGate').style.display = 'flex';
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', doLogin);
+  document.getElementById('passwordInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  async function doLogin() {
+    const pw = document.getElementById('passwordInput').value;
+    const errEl = document.getElementById('loginErr');
+    errEl.textContent = '';
+    const ok = await tryLogin(pw);
+    if (!ok) {
+      errEl.textContent = 'Contraseña incorrecta.';
+      return;
+    }
+    adminPassword = pw;
+    sessionStorage.setItem('epic_admin_password', pw);
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('app').classList.add('ready');
+    loadAll();
+  }
+
+  // ---------- Tabs ----------
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+      if (btn.dataset.tab === 'stats') loadStats();
+      if (btn.dataset.tab === 'logs') loadLogs();
+    });
+  });
+
+  function escapeXml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ---------- Cargar todo ----------
+  async function loadAll() {
+    currentConfig = await apiFetch('/api/admin/config');
+    renderProjectList();
+    renderConnections();
+    renderClientConfig();
+  }
+
+  function renderProjectList() {
+    const el = document.getElementById('projectList');
+    el.innerHTML = currentConfig.clients
+      .map(
+        (c) => `<div class="proj-item ${c.client_id === activeClientId ? 'active' : ''}" data-id="${c.client_id}">
+          <span class="dot"></span>${escapeXml(c.display_name)}
+        </div>`
+      )
+      .join('');
+    el.querySelectorAll('.proj-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        activeClientId = item.dataset.id;
+        renderProjectList();
+        renderClientConfig();
+        document.getElementById('pageTitle').textContent =
+          currentConfig.clients.find((c) => c.client_id === activeClientId)?.display_name || '';
+      });
+    });
+  }
+
+  // ---------- Conexiones ----------
+  function renderConnections() {
+    const list = [currentConfig.connections.primary, currentConfig.connections.backup].filter(Boolean);
+    const el = document.getElementById('connectionsList');
+    el.innerHTML = list
+      .map((conn, i) => {
+        const secretName = SECRET_BY_PROVIDER[conn.provider] || conn.api_key_secret;
+        const configured = currentConfig.secrets_status[secretName];
+        const models = PROVIDER_MODELS[conn.provider] || [conn.model];
+        return `<div class="conn-card" data-provider="${conn.provider}" data-secret="${secretName}">
+          <span class="handle">⠿⠿</span>
+          <span class="role-badge">${i === 0 ? 'Principal' : 'Backup'}</span>
+          <div class="fields">
+            <select class="provider-select">
+              ${Object.keys(PROVIDER_MODELS).map((p) => `<option value="${p}" ${p === conn.provider ? 'selected' : ''}>${p === 'anthropic' ? 'Anthropic' : 'OpenAI'}</option>`).join('')}
+            </select>
+            <input type="text" class="model-input" list="models-${conn.provider}" value="${escapeXml(conn.model)}" />
+            <datalist id="models-${conn.provider}">
+              ${models.map((m) => `<option value="${m}">`).join('')}
+            </datalist>
+          </div>
+          <div class="key-status ${configured ? 'ok' : 'missing'}">
+            <span class="indicator"></span>${configured ? 'Key configurada' : 'Falta key'}
+          </div>
+          <button class="btn small edit-key-btn">Actualizar key</button>
+        </div>`;
+      })
+      .join('');
+
+    if (window.Sortable) {
+      Sortable.create(el, {
+        handle: '.handle',
+        animation: 150,
+        onEnd: saveConnectionsFromDom,
+      });
+    }
+
+    el.querySelectorAll('.provider-select').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        const card = sel.closest('.conn-card');
+        card.dataset.provider = sel.value;
+        const secretName = SECRET_BY_PROVIDER[sel.value];
+        card.dataset.secret = secretName;
+        const configured = currentConfig.secrets_status[secretName];
+        const statusEl = card.querySelector('.key-status');
+        statusEl.className = `key-status ${configured ? 'ok' : 'missing'}`;
+        statusEl.innerHTML = `<span class="indicator"></span>${configured ? 'Key configurada' : 'Falta key'}`;
+        saveConnectionsFromDom();
+      });
+    });
+    el.querySelectorAll('.model-input').forEach((inp) => {
+      inp.addEventListener('change', saveConnectionsFromDom);
+    });
+    el.querySelectorAll('.edit-key-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const card = btn.closest('.conn-card');
+        openSecretModal(card.dataset.secret);
+      });
+    });
+  }
+
+  async function saveConnectionsFromDom() {
+    const cards = [...document.querySelectorAll('#connectionsList .conn-card')];
+    const [primary, backup] = cards.map((card) => ({
+      provider: card.querySelector('.provider-select').value,
+      model: card.querySelector('.model-input').value,
+      api_key_secret: SECRET_BY_PROVIDER[card.querySelector('.provider-select').value],
+    }));
+    try {
+      currentConfig.connections = await apiFetch('/api/admin/connections', {
+        method: 'PUT',
+        body: JSON.stringify({ primary, backup }),
+      });
+      renderConnections();
+      showToast('Conexiones actualizadas');
+    } catch (err) {
+      showToast('Error: ' + err.message);
+    }
+  }
+
+  // ---------- Secret modal ----------
+  function openSecretModal(secretName) {
+    currentSecretName = secretName;
+    document.getElementById('secretModalTitle').textContent = `Actualizar ${secretName}`;
+    document.getElementById('secretValueInput').value = '';
+    document.getElementById('secretModal').classList.add('open');
+    document.getElementById('secretValueInput').focus();
+  }
+  document.getElementById('secretCancelBtn').addEventListener('click', () => {
+    document.getElementById('secretModal').classList.remove('open');
+  });
+  document.getElementById('secretSaveBtn').addEventListener('click', async () => {
+    const value = document.getElementById('secretValueInput').value.trim();
+    if (!value) return;
+    try {
+      await apiFetch('/api/admin/secret', {
+        method: 'PUT',
+        body: JSON.stringify({ name: currentSecretName, value }),
+      });
+      document.getElementById('secretModal').classList.remove('open');
+      showToast(`${currentSecretName} actualizado`);
+      currentConfig = await apiFetch('/api/admin/config');
+      renderConnections();
+    } catch (err) {
+      showToast('Error: ' + err.message);
+    }
+  });
+
+  // ---------- Contexto + preguntas conocidas ----------
+  function renderClientConfig() {
+    const client = currentConfig.clients.find((c) => c.client_id === activeClientId);
+    if (!client) return;
+    document.getElementById('ctxTextarea').value = client.extra_instructions || '';
+    document.getElementById('ctxSaved').textContent = '';
+    renderKnownQuestions(client.known_questions || []);
+  }
+
+  function renderKnownQuestions(list) {
+    const el = document.getElementById('knownQuestionsList');
+    if (!list.length) {
+      el.innerHTML = '<div class="hint">Sin preguntas guardadas todavía.</div>';
+      return;
+    }
+    el.innerHTML = list
+      .map(
+        (q) => `<div class="kq-row" data-id="${q.id}">
+          <span class="handle">⠿⠿</span>
+          <span class="id-badge">#${escapeXml(q.id)}</span>
+          <span class="desc">${escapeXml(q.desc)}</span>
+          <button class="btn small remove-kq-btn">Eliminar</button>
+        </div>`
+      )
+      .join('');
+
+    if (window.Sortable) {
+      Sortable.create(el, { handle: '.handle', animation: 150, onEnd: saveKnownQuestionsFromDom });
+    }
+    el.querySelectorAll('.remove-kq-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('.kq-row').remove();
+        saveKnownQuestionsFromDom();
+      });
+    });
+  }
+
+  function readKnownQuestionsFromDom() {
+    return [...document.querySelectorAll('#knownQuestionsList .kq-row')].map((row) => ({
+      id: Number(row.dataset.id),
+      desc: row.querySelector('.desc').textContent,
+    }));
+  }
+
+  async function saveKnownQuestionsFromDom() {
+    const known_questions = readKnownQuestionsFromDom();
+    try {
+      await apiFetch(`/api/admin/client/${activeClientId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ known_questions }),
+      });
+      const client = currentConfig.clients.find((c) => c.client_id === activeClientId);
+      if (client) client.known_questions = known_questions;
+      showToast('Preguntas actualizadas');
+    } catch (err) {
+      showToast('Error: ' + err.message);
+    }
+  }
+
+  document.getElementById('addKqBtn').addEventListener('click', () => {
+    const idInput = document.getElementById('newKqId');
+    const descInput = document.getElementById('newKqDesc');
+    const id = Number(idInput.value);
+    const desc = descInput.value.trim();
+    if (!id || !desc) {
+      showToast('Completa el ID y la descripción');
+      return;
+    }
+    const client = currentConfig.clients.find((c) => c.client_id === activeClientId);
+    client.known_questions = [...(client.known_questions || []), { id, desc }];
+    renderKnownQuestions(client.known_questions);
+    saveKnownQuestionsFromDom();
+    idInput.value = '';
+    descInput.value = '';
+  });
+
+  document.getElementById('saveCtxBtn').addEventListener('click', async () => {
+    const extra_instructions = document.getElementById('ctxTextarea').value;
+    try {
+      await apiFetch(`/api/admin/client/${activeClientId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ extra_instructions }),
+      });
+      const client = currentConfig.clients.find((c) => c.client_id === activeClientId);
+      if (client) client.extra_instructions = extra_instructions;
+      document.getElementById('ctxSaved').textContent = 'Guardado ✓';
+      showToast('Contexto guardado');
+    } catch (err) {
+      showToast('Error: ' + err.message);
+    }
+  });
+
+  // ---------- Estadisticas ----------
+  function fmtUsd(n) { return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }); }
+  function fmtNum(n) { return Number(n || 0).toLocaleString('en-US'); }
+
+  function renderDailyChart(byDay, width, height) {
+    if (!byDay || !byDay.length) return '<div class="empty">Sin datos.</div>';
+    const padding = { top: 14, right: 8, bottom: 26, left: 8 };
+    const chartW = width - padding.left - padding.right;
+    const chartH = height - padding.top - padding.bottom;
+    const maxCost = Math.max(...byDay.map((d) => d.total_estimated_cost_usd), 0.01);
+    const barGap = Math.max(2, 8 - byDay.length / 10);
+    const barW = Math.max(2, (chartW - barGap * (byDay.length - 1)) / byDay.length);
+    let bars = '';
+    byDay.forEach((d, i) => {
+      const cost = d.total_estimated_cost_usd || 0;
+      const barH = Math.max((cost / maxCost) * chartH, 1);
+      const x = padding.left + i * (barW + barGap);
+      const y = padding.top + (chartH - barH);
+      const label = String(d.day).slice(5, 10);
+      bars += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="2" fill="#6ea8fe"><title>${label}: ${fmtUsd(cost)}</title></rect>`;
+      if (byDay.length <= 15 || i % Math.ceil(byDay.length / 15) === 0) {
+        bars += `<text class="chart-bar-label" x="${x + barW / 2}" y="${height - 8}" text-anchor="middle">${label}</text>`;
+      }
+    });
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${bars}</svg>`;
+  }
+
+  async function loadStats() {
+    const el = document.getElementById('statsContent');
+    el.innerHTML = '<div class="empty">Cargando...</div>';
+    try {
+      const data = await apiFetch('/api/admin/logs?limit=1'); // touch auth cheaply first
+    } catch {}
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard?days=30`);
+      const data = await res.json();
+      if (data.error) {
+        el.innerHTML = `<div class="empty">${escapeXml(data.error)}</div>`;
+        return;
+      }
+      const t = data.totals || {};
+      const avgCost = t.total_questions > 0 ? (t.total_estimated_cost_usd || 0) / t.total_questions : 0;
+
+      el.innerHTML = `
+        <div class="kpis">
+          <div class="kpi"><div class="label">Preguntas</div><div class="value">${fmtNum(t.total_questions)}</div></div>
+          <div class="kpi"><div class="label">Costo total</div><div class="value">${fmtUsd(t.total_estimated_cost_usd)}</div></div>
+          <div class="kpi"><div class="label">Costo promedio</div><div class="value">${fmtUsd(avgCost)}</div></div>
+          <div class="kpi"><div class="label">Latencia promedio</div><div class="value">${fmtNum(Math.round(t.avg_latency_ms || 0))} ms</div></div>
+          <div class="kpi"><div class="label">Errores</div><div class="value${t.total_errors > 0 ? ' danger' : ''}">${fmtNum(t.total_errors)}</div></div>
+        </div>
+        <div class="card"><h2>Costo por día</h2>${renderDailyChart(data.by_day, 900, 180)}</div>
+        <div class="card">
+          <h2>Por conexión (proveedor:modelo)</h2>
+          ${(data.by_connection && data.by_connection.length)
+            ? `<table><thead><tr><th>Conexión</th><th class="num">Preguntas</th><th class="num">Costo</th><th class="num">Latencia prom.</th></tr></thead><tbody>
+              ${data.by_connection.map((c) => `<tr><td class="mono">${escapeXml(c.connection_used)}</td><td class="num">${fmtNum(c.total_questions)}</td><td class="num">${fmtUsd(c.total_estimated_cost_usd)}</td><td class="num">${fmtNum(Math.round(c.avg_latency_ms))} ms</td></tr>`).join('')}
+            </tbody></table>`
+            : '<div class="empty">Sin datos todavía.</div>'}
+        </div>
+        <div class="card">
+          <h2>Por cliente</h2>
+          ${(data.by_client && data.by_client.length)
+            ? `<table><thead><tr><th>Cliente</th><th class="num">Preguntas</th><th class="num">Costo</th><th class="num">Errores</th></tr></thead><tbody>
+              ${data.by_client.map((c) => `<tr><td>${escapeXml(c.client_id)}</td><td class="num">${fmtNum(c.total_questions)}</td><td class="num">${fmtUsd(c.total_estimated_cost_usd)}</td><td class="num">${c.total_errors > 0 ? `<span class="badge-error">${fmtNum(c.total_errors)}</span>` : '0'}</td></tr>`).join('')}
+            </tbody></table>`
+            : '<div class="empty">Sin datos todavía.</div>'}
+        </div>
+      `;
+    } catch (err) {
+      el.innerHTML = `<div class="empty">Error: ${escapeXml(err.message)}</div>`;
+    }
+  }
+
+  // ---------- Logs ----------
+  document.getElementById('refreshLogsBtn').addEventListener('click', loadLogs);
+  document.getElementById('onlyErrorsCheck').addEventListener('change', loadLogs);
+
+  async function loadLogs() {
+    const el = document.getElementById('logsContent');
+    el.innerHTML = '<div class="empty">Cargando...</div>';
+    const onlyErrors = document.getElementById('onlyErrorsCheck').checked;
+    try {
+      const data = await apiFetch(`/api/admin/logs?limit=100${onlyErrors ? '&only_errors=1' : ''}`);
+      if (data.error) {
+        el.innerHTML = `<div class="empty">${escapeXml(data.error)}</div>`;
+        return;
+      }
+      if (!data.logs || !data.logs.length) {
+        el.innerHTML = '<div class="empty">Sin registros todavía.</div>';
+        return;
+      }
+      el.innerHTML = `<table><thead><tr>
+        <th>Hora</th><th>Cliente</th><th>Conexión</th><th class="num">Latencia</th><th class="num">Llamadas MCP</th><th class="num">Costo</th><th>Pregunta</th>
+      </tr></thead><tbody>
+        ${data.logs
+          .map((l) => {
+            const isError = Number(l.is_error) === 1;
+            const time = new Date(l.timestamp).toLocaleString('es-GT', { dateStyle: 'short', timeStyle: 'short' });
+            return `<tr class="${isError ? 'log-error' : ''}">
+              <td>${time}</td>
+              <td>${escapeXml(l.client_id)}</td>
+              <td class="mono">${escapeXml(l.connection_used || '—')}</td>
+              <td class="num">${fmtNum(Math.round(l.latency_ms))} ms</td>
+              <td class="num">${fmtNum(l.num_mcp_tool_calls)}</td>
+              <td class="num">${fmtUsd(l.estimated_cost_usd)}</td>
+              <td class="q-preview" title="${escapeXml(l.error || l.question || '')}">${isError ? '<span class="badge-error">✕ </span>' : '<span class="badge-ok">✓ </span>'}${escapeXml(l.error || l.question || '')}</td>
+            </tr>`;
+          })
+          .join('')}
+      </tbody></table>`;
+    } catch (err) {
+      el.innerHTML = `<div class="empty">Error: ${escapeXml(err.message)}</div>`;
+    }
+  }
+
+  initAuth();
+</script>
+
+</body>
+</html>
