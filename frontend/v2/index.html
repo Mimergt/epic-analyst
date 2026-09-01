@@ -112,18 +112,6 @@
     font-size: 11px;
     fill: var(--text-dim);
   }
-  .chart-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 10px;
-    font-size: 12.5px;
-    color: var(--text-dim);
-  }
-  .chart-legend-item { display: flex; align-items: center; gap: 5px; }
-  .chart-legend-dot {
-    width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0;
-  }
   .chart-wrap-kpi { text-align: center; }
   .kpi-value {
     font-size: 52px;
@@ -350,7 +338,7 @@
       `;
     });
 
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${bars}</svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${SVG_FONT_STYLE}${bars}</svg>`;
   }
 
   function renderLineChart(series, width, height) {
@@ -377,13 +365,16 @@
       )
       .join('');
 
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${SVG_FONT_STYLE}
       <path d="${path}" fill="none" stroke="#6ea8fe" stroke-width="2.5" />
       ${dots}
     </svg>`;
   }
 
   const CHART_PALETTE = ['#6ea8fe', '#f78da7', '#ffd166', '#06d6a0', '#c77dff', '#ff9770'];
+  // Fuente embebida en el propio SVG: al exportar a PNG el SVG se rasteriza
+  // fuera del DOM de la pagina, asi que no hereda el font-family del body.
+  const SVG_FONT_STYLE = '<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}</style>';
 
   function renderPieChart(series, width, height) {
     const points = series[0]?.data || [];
@@ -397,6 +388,8 @@
     let angle = -Math.PI / 2;
     let slices = '';
     let legend = '';
+    // La leyenda se dibuja DENTRO del mismo SVG (no como div HTML aparte) para
+    // que quede incluida cuando se exporta la grafica como PNG.
     points.forEach((p, i) => {
       const frac = p.value / total;
       const sweep = frac * Math.PI * 2;
@@ -408,10 +401,12 @@
       const largeArc = sweep > Math.PI ? 1 : 0;
       const color = CHART_PALETTE[i % CHART_PALETTE.length];
       slices += `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${color}" />`;
-      legend += `<div class="chart-legend-item"><span class="chart-legend-dot" style="background:${color}"></span>${escapeXml(truncateLabel(p.label))} (${Math.round(frac * 100)}%)</div>`;
+      const ly = height + 16 + i * 20;
+      legend += `<circle cx="18" cy="${ly - 5}" r="6" fill="${color}" /><text class="chart-bar-label" x="32" y="${ly}">${escapeXml(truncateLabel(p.label))} (${Math.round(frac * 100)}%)</text>`;
     });
 
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${slices}</svg><div class="chart-legend">${legend}</div>`;
+    const totalHeight = height + points.length * 20 + 12;
+    return `<svg viewBox="0 0 ${width} ${totalHeight}" width="100%" height="${totalHeight}">${SVG_FONT_STYLE}${slices}${legend}</svg>`;
   }
 
   function renderStackedBarChart(chart, width, height) {
@@ -440,11 +435,14 @@
       bars += `<text class="chart-bar-label" x="${x + barW / 2}" y="${height - 12}" text-anchor="middle">${escapeXml(truncateLabel(cat))}</text>`;
     });
 
-    const legend = series
-      .map((s, si) => `<div class="chart-legend-item"><span class="chart-legend-dot" style="background:${CHART_PALETTE[si % CHART_PALETTE.length]}"></span>${escapeXml(s.name)}</div>`)
-      .join('');
+    let legend = '';
+    series.forEach((s, si) => {
+      const ly = height + 16 + si * 20;
+      legend += `<circle cx="18" cy="${ly - 5}" r="6" fill="${CHART_PALETTE[si % CHART_PALETTE.length]}" /><text class="chart-bar-label" x="32" y="${ly}">${escapeXml(s.name)}</text>`;
+    });
 
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">${bars}</svg><div class="chart-legend">${legend}</div>`;
+    const totalHeight = height + series.length * 20 + 12;
+    return `<svg viewBox="0 0 ${width} ${totalHeight}" width="100%" height="${totalHeight}">${SVG_FONT_STYLE}${bars}${legend}</svg>`;
   }
 
   function renderKpi(chart) {
@@ -504,7 +502,7 @@
 
     const downloadBtn = card.querySelector('[data-action="download"]');
     if (downloadBtn) {
-      downloadBtn.addEventListener('click', () => downloadSvg(card.querySelector('.chart-wrap svg')));
+      downloadBtn.addEventListener('click', () => downloadChartAsPng(card.querySelector('.chart-wrap svg'), chart?.title));
     }
     chatEl.appendChild(msg);
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -517,20 +515,59 @@
   const ICON_CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
   const ICON_DOWNLOAD_BTN = `<button type="button" class="icon-btn chart-download-btn" data-action="download" title="Descargar gráfica">${ICON_DOWNLOAD}</button>`;
 
-  function downloadSvg(svgEl) {
+  // Convierte el SVG de la grafica a PNG (mas facil de compartir que SVG) via
+  // un canvas intermedio: se carga el SVG como imagen, se dibuja sobre un
+  // canvas con fondo solido (para que no quede transparente al compartir), y
+  // se exporta el canvas como PNG.
+  function downloadChartAsPng(svgEl, titleText) {
     if (!svgEl) return;
+
+    const scale = 2;
+    const [, , svgW, svgH] = svgEl.getAttribute('viewBox').split(' ').map(Number);
+    const padding = 16;
+    const titleH = titleText ? 28 : 0;
+
     const clone = svgEl.cloneNode(true);
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', svgW);
+    clone.setAttribute('height', svgH);
     const svgString = new XMLSerializer().serializeToString(clone);
-    const blob = new Blob([svgString], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `grafica-epic-analyst-${Date.now()}.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const svgUrl = URL.createObjectURL(new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' }));
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = (svgW + padding * 2) * scale;
+      canvas.height = (svgH + titleH + padding * 2) * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      ctx.fillStyle = '#1e222b';
+      ctx.fillRect(0, 0, svgW + padding * 2, svgH + titleH + padding * 2);
+
+      if (titleText) {
+        ctx.fillStyle = '#9aa2b1';
+        ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        ctx.textBaseline = 'top';
+        ctx.fillText(titleText, padding, padding);
+      }
+
+      ctx.drawImage(img, padding, padding + titleH, svgW, svgH);
+      URL.revokeObjectURL(svgUrl);
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `grafica-epic-analyst-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    };
+    img.onerror = () => URL.revokeObjectURL(svgUrl);
+    img.src = svgUrl;
   }
 
   async function copyText(text) {
